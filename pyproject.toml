@@ -1,0 +1,39 @@
+[project]
+name = "findocai-backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aerich>=0.8.2",
+    "aioboto3>=14.3.0",
+    "aiohttp>=3.11.18",
+    "aiosmtplib>=4.0.1",
+    "azure-ai-documentintelligence>=1.0.2",
+    "bcrypt==4.0.1",
+    "fastapi>=0.115.12",
+    "gunicorn>=23.0.0",
+    "httpx>=0.28.1",
+    "jinja2>=3.1.6",
+    "langchain-community>=0.3.24",
+    "mistralai>=1.7.0",
+    "openai>=1.79.0",
+    "passlib>=1.7.4",
+    "pydantic-settings>=2.9.1",
+    "pydantic[email]>=2.11.4",
+    "pyjwt>=2.10.1",
+    "python-multipart>=0.0.20",
+    "ruff>=0.11.9",
+    "stripe>=12.1.0",
+    "tiktoken>=0.9.0",
+    "tomlkit>=0.13.2",
+    "tortoise-orm[asyncpg]>=0.25.0",
+    "tortoise-vector>=0.1.4",
+    "uvicorn>=0.34.2",
+    "uvicorn-worker>=0.3.0",
+]
+
+[tool.aerich]
+tortoise_orm = "app.db.config.TORTOISE_ORM"
+location = "./migrations"
+src_folder = "./."
