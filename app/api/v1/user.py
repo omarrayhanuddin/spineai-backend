@@ -38,7 +38,7 @@ async def register(user: UserCreate, background_tasks: BackgroundTasks):
 
     background_tasks.add_task(
         send_email,
-        subject="Action Required: Verify Your Email on FinDocAi",
+        subject="Action Required: Verify Your Email on SpineAi",
         recipient=user.email,
         template_name="email_verify.html",
         context=context,
@@ -63,7 +63,7 @@ async def resend_verification_email(
 
     background_tasks.add_task(
         send_email,
-        subject="Action Required: Verify Your Email on FinDocAi",
+        subject="Action Required: Verify Your Email on SpineAi",
         recipient=user.email,
         template_name="email_verify.html",
         context=context,
@@ -143,7 +143,7 @@ async def forgot_password(form: ForgotPassword, background_tasks: BackgroundTask
 
     background_tasks.add_task(
         send_email,
-        subject="FinDocAi Password Reset Request",
+        subject="SpineAi Password Reset Request",
         recipient=user.email,
         template_name="reset_password.html",
         context=context,
