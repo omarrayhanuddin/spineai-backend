@@ -144,7 +144,7 @@ async def lifespan(app: FastAPI):
         logger.info("Application lifespan shutdown completed.")
 
 
-app = FastAPI(title="FinDocAi Backend APIs", lifespan=lifespan)
+app = FastAPI(title="SpineAi Backend APIs", lifespan=lifespan)
 
 origins = ["*"]
 app.add_middleware(
