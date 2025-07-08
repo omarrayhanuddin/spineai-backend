@@ -59,89 +59,252 @@ def format_file_size(size_in_bytes: int) -> str:
     return f"{size_in_bytes:.2f} {units[-1]} (Extremely Large)"
 
 
-def create_llm_prompt(user_query, retrieved_contexts):
-    prompt = f"""
-You are a highly intelligent document analysis assistant.
-If you are asked what you are and what you can do and what you are trained for then you should only answer that you are a highly intelligent document analysis assistant, your name is "FinDocAI" and then list the thing you can do related to your document analysis assistant personality and always refuse any other task than document analysis and Q&A based on the submitted document.
-You should act professional to all the users while talking in a fairly simple and easy to understand language.
-Your main task is whenever you get a document you need to extract all the key terms while explaining what the terms are,
-Then extract these (document type detection, red Flag detection, risk summarization, coverage gap, hidden fee or fine detection, deadline extraction, complexity Score, missing Info & technical terms extraction & explanation and many more that are important for a user to know based on the document) 
-And lastly add a summary of what the document is about what it's used for and how it works and add a conclusion.\n
-This should be strickly followed user question is not provided.
-Always respond in a strict Markdown
-### Context ####\n
-{retrieved_contexts}\n
-### Question ###\n
-{user_query}"""
-    return prompt
+from typing import List, Dict
 
 
-def build_prompt(context: str, user_prompt: str) -> str:
-    return f"""You are an intelligent assistant helping a user understand the contents of a document.
+def build_spine_diagnosis_prompt(
+    session_id: str,
+    previous_messages: List[Dict],   # [{"id": int, "sender": "user/ai", "text": str}]
+    previous_images: List[Dict],     # [{"image_id": int, "url": str}]
+    current_message: str,            # new symptom input
+) -> List[Dict]:
+    """
+    Constructs the OpenAI-compatible messages list for vision-based spine diagnosis.
 
-Here is some relevant context extracted from the document:
----
-{context}
----
+    Returns:
+        List[Dict]: messages[] array for openai.ChatCompletion.create(...)
+    """
 
-Now, answer the following user question based on the above context:
-User: {user_prompt}
-Assistant:"""
+    # 🧠 1. System prompt
+    messages = [{
+        "role": "system",
+        "content": (
+            "You are a medical assistant AI that diagnoses spine-related issues using X-ray/MRI images and patient symptoms.\n"
+            "You will receive:\n"
+            "- A unique session ID\n"
+            "- Prior patient messages and images\n"
+            "- The latest input (text + images)\n\n"
+            "Your tasks:\n"
+            "1. Analyze images and symptom messages.\n"
+            "2. If unclear or insufficient, ask for clarification.\n"
+            "3. Return a strict JSON with:\n"
+            "   - `backend`: includes diagnosis data for internal use\n"
+            "   - `user`: a markdown explanation for the patient\n"
+            "   (see format below)\n\n"
+            "If diagnosis is not possible, leave `findings` and `recommendations` as null, and explain what’s missing in the `user` section."
+        )
+    }]
 
+    # 🗣️ 2. User message + previous history
+    user_message_block = {
+        "role": "user",
+        "content": []
+    }
 
-def get_messages_for_llm(
-    user_query: str,
-    retrieved_contexts: str,
-    chat_history: list = None,
-    is_initial_analysis_request: bool = False,
-) -> list[dict]:
-    # System message: This sets the persona and overall guidelines for the AI
-    # Make it less directive about performing a full analysis immediately.
-    system_content = """
-You are FinDocAI, a highly intelligent document analysis assistant.
-Your core expertise is extracting and analyzing financial, legal, and operational information from documents.
-You can identify key terms, detect document types, flag risks, summarize financial aspects, extract deadlines, and provide concise summaries and conclusions.
-You should always act professional, use simple language, and strictly adhere to the content of the provided document or context.
-**Only answer questions or perform analysis based on the document context. Refuse any other tasks.**
-Always respond in strict Markdown format.
-"""
+    # 📄 Session & prior messages
+    user_message_block["content"].append({
+        "type": "text",
+        "text": f"Session ID: {session_id}\n\n## Previous Messages:\n"
+    })
 
-    messages = [{"role": "system", "content": system_content}]
+    for msg in previous_messages:
+        prefix = "User" if msg["sender"] == "user" else "system"
+        user_message_block["content"].append({
+            "type": "text",
+            "text": f"- [{prefix} msg_id {msg['id']}] {msg['text']}"
+        })
 
-    # Add historical messages if provided (for multi-turn conversations)
-    if chat_history:
-        messages.extend(chat_history)
+    # 🖼️ Previous images
+    if previous_images:
+        user_message_block["content"].append({
+            "type": "text",
+            "text": "\n## Previous and Current Input Images (Last ones are probably current images):\n"
+        })
+        for img in previous_images:
+            user_message_block["content"].append({
+                "type": "text",
+                "text": f"Image ID: {img['image_id']}"
+            })
+            user_message_block["content"].append({
+                "type": "image_url",
+                "image_url": {"url": img["url"]}
+            })
 
-    # User message: This contains the current query and relevant context
-    user_message_content = ""
+    # ✍️ Current input
+    user_message_block["content"].append({
+        "type": "text",
+        "text": "\n## Current Input Message:"
+    })
+    user_message_block["content"].append({
+        "type": "text",
+        "text": f"- [{prefix} msg_id {current_message['id']}] {current_message['text']}"
+    })
 
-    if is_initial_analysis_request:
-        # If it's the very first request (i.e., document upload), tell the AI to do a full analysis.
-        user_message_content += f"""### Document Context ####\n{retrieved_contexts}\n
-Please perform a comprehensive analysis of this document. Specifically, extract all key terms and explain them. Then, extract the following:
-- Document type detection
-- Red Flag detection
-- Risk summarization
-- Coverage gap analysis
-- Hidden fee or fine detection
-- Deadline extraction
-- Complexity Score
-- Missing Info & technical terms extraction & explanation
+    # for img in current_images:
+    #     user_message_block["content"].append({
+    #         "type": "text",
+    #         "text": f"Image ID: {img['image_id']}"
+    #     })
+    #     user_message_block["content"].append({
+    #         "type": "image_url",
+    #         "image_url": {"url": img["url"]}
+    #     })
 
-Finally, add a summary of what the document is about, what it's used for, and how it works, followed by a conclusion.
-"""
-    else:
-        # For subsequent messages, provide context and the user's specific question.
-        if retrieved_contexts:
-            user_message_content += f"### Context ####\n{retrieved_contexts}\n"
+    # 📤 Response instruction
+    user_message_block["content"].append({
+        "type": "text",
+        "text": (
+            "\n## Output Format\n"
+            "Respond ONLY in this JSON format:\n\n"
+            "{\n"
+            "  \"backend\": {\n"
+            "    \"is_diagnosed\": true or false,\n"
+            "    \"irrelevant_message_ids\": [ ... ],\n"
+            "    \"irrelevant_image_ids\": [ ... ],\n"
+            "    \"findings\": { ... },\n"
+            "    \"recommendations\": { ... }\n"
+            "  },\n"
+            "  \"user\": \"<markdown explanation for the patient>\"\n"
+            "}\n\n"
+            "Leave `findings` and `recommendations` as `null` if diagnosis isn't yet possible."
+        )
+    })
 
-        user_message_content += f"### User Question ###\n{user_query}"
-
-    messages.append(
-        {"role": "user", "content": user_message_content.strip()}
-    )  # .strip() to clean up whitespace
-
+    # 🧩 Add full user message block to messages list
+    messages.append(user_message_block)
     return messages
+
+
+from typing import List, Dict, Optional
+
+
+def build_post_diagnosis_prompt(
+    session_id: str,
+    user: Dict,  # {"name": "Omar"}
+    findings: Dict,
+    recommendations: Dict,
+    previous_messages: List[Dict],  # [{"sender": "user"/"ai", "text": str}]
+    current_message: Dict           # {"id": int, "text": str}
+) -> List[Dict]:
+    """
+    Constructs OpenAI-compatible messages[] for post-diagnosis AI use.
+
+    Returns:
+        List[Dict]: messages for openai.ChatCompletion.create(...)
+    """
+
+    def format_findings_md(findings: Dict) -> str:
+        parts = []
+        for key, value in findings.items():
+            title = key.replace("_", " ").title()
+            if isinstance(value, dict):
+                parts.append(f"### 🦴 {title}")
+                for sub_key, sub_value in value.items():
+                    parts.append(f"- **{sub_key.replace('_', ' ').title()}**: {sub_value}")
+            elif isinstance(value, list):
+                parts.append(f"### 📌 {title}")
+                parts.extend([f"- {v}" for v in value])
+            elif isinstance(value, str):
+                parts.append(f"### 📌 {title}\n- {value}")
+        return "\n".join(parts) or "No diagnosis data available."
+
+    def format_recommendations_md(recommendations: Dict) -> str:
+        if not recommendations:
+            return "No previous recommendations available."
+        out = []
+        for key, values in recommendations.items():
+            title = key.replace("_", " ").title()
+            if isinstance(values, list):
+                formatted = "\n".join([f"  - {v}" for v in values]) if values else "  - None provided"
+            elif isinstance(values, str):
+                formatted = f"  - {values}" if values.strip() else "  - None provided"
+            else:
+                formatted = "  - Unknown format"
+            out.append(f"- **{title}**:\n{formatted}")
+        return "\n".join(out)
+
+    # 🧠 1. System message
+    messages = [{
+        "role": "system",
+        "content": (
+            "You are an AI medical assistant specialized in spine-related diagnosis and long-term patient care.\n\n"
+            "The patient has already been diagnosed. Your responsibilities now include:\n"
+            "1. Reviewing the patient's previous diagnosis and recommendations.\n"
+            "2. Answering their follow-up questions and concerns clearly and professionally.\n"
+            "3. If appropriate, updating the previous recommendations based on:\n"
+            "   - Progress or lack of progress\n"
+            "   - New symptoms reported\n"
+            "   - Behavioral changes mentioned\n"
+            "4. If the user requests a **report**, generate a medical-style progress report using the previous findings and updated recommendations. Format it clearly in proper markdown\n\n"
+            "Never attempt to re-diagnose symptoms or images.\n\n"
+            "Respond in the following JSON format ONLY:\n\n"
+            "{\n"
+            "  \"updated_recommendations\": {\n"
+            "    \"lifestyle\": [\"...\"],\n"
+            "    \"exercise\": [\"...\"],\n"
+            "    \"diet\": [\"...\"],\n"
+            "    \"followup\": \"...\"\n"
+            "  },\n"
+            "  \"user\": \"### Markdown-formatted response to show the patient\"\n"
+            "}\n\n"
+            "If no recommendations have changed, omit `updated_recommendations`.\n"
+            "Always include the `user` markdown response except when asked for reponse directl"
+        )
+    }]
+
+    # 🗣️ 2. User context message
+    user_message_block = {
+        "role": "user",
+        "content": []
+    }
+
+    # 📄 Patient info
+    user_message_block["content"].append({
+        "type": "text",
+        "text": f"Patient: {user.get('name', 'Patient')}\nSession ID: {session_id}"
+    })
+
+    # 📊 Findings
+    user_message_block["content"].append({
+        "type": "text",
+        "text": "\n### 🧾 Previous Diagnosis:\n" + format_findings_md(findings)
+    })
+
+    # ✅ Recommendations
+    user_message_block["content"].append({
+        "type": "text",
+        "text": "\n### ✅ Previous Recommendations:\n" + format_recommendations_md(recommendations)
+    })
+
+    # 💬 Previous related memory messages
+    if previous_messages:
+        user_message_block["content"].append({
+            "type": "text",
+            "text": "\n### 🧠 Related Messages from Past Conversation:"
+        })
+        for msg in previous_messages:
+            prefix = "User" if msg["sender"] == "user" else "system"
+            user_message_block["content"].append({
+                "type": "text",
+                "text": f"- [{prefix}] {msg['text']}"
+            })
+
+    # ✍️ Current patient input
+    user_message_block["content"].append({
+        "type": "text",
+        "text": "\n### 💬 Patient's New Message:"
+    })
+    user_message_block["content"].append({
+        "type": "text",
+        "text": f"- [User {current_message}]"
+
+    })
+
+    # Add to full message list
+    messages.append(user_message_block)
+    return messages
+
+
 
 
 def generate_secret_key() -> str:

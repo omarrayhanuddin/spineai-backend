@@ -4,6 +4,7 @@ from pydantic import Field, EmailStr
 
 
 class Settings(BaseSettings):
+    EMBEDDING_DIMENSIONS: int = Field(default=1536)
     APP_ENV: str = Field(default="stage", env="APP_ENV")
     STRIPE_API_KEY: str = Field(default=None, env="STRIPE_API_KEY")
     STRIPE_WEBHOOK_SECRET: str = Field(default=None, env="STRIPE_WEBHOOK_SECRET")

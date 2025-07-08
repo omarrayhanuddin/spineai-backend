@@ -8,51 +8,42 @@ class ChatSession(BaseModelWithoutID):
     id = fields.UUIDField(primary_key=True)
     user = fields.ForeignKeyField("models.User", related_name="chat_sessions")
     title = fields.TextField(null=True)
+    findings = fields.JSONField(null=True)
+    recommendations = fields.JSONField(null=True)
+    is_diagnosed = fields.BooleanField(default=False)
+
 
     class Meta:
-        table = "chat_sessions"
+        table = "sessions"
 
     def __str__(self):
         return self.user.email
 
 
-class Message(BaseModelWithoutID):
+class ChatMessage(BaseModelWithoutID):
     id = fields.IntField(pk=True)
-    session = fields.ForeignKeyField("models.ChatSession", related_name="messages")
+    session = fields.ForeignKeyField("models.ChatSession", related_name="chat_messages")
     sender = fields.CharField(max_length=10)
-    content = fields.TextField()
-    created_at = fields.DatetimeField(auto_now_add=True)
-    initial = fields.BooleanField(default=False)
-    # input_tokens = fields.IntField(null=True, default=0)
-    # output_tokens = fields.IntField(null=True, default=0)
-    # total_tokens = fields.IntField(null=True, default=0)
+    content = fields.TextField(null=True)
+    embedding = VectorField(vector_size=settings.EMBEDDING_DIMENSIONS)
+    is_relevant = fields.BooleanField(default=True) 
 
     class Meta:
         table = "messages"
 
 
-class ChatDocument(BaseModelWithoutID):
-    id = fields.UUIDField(primary_key=True)
-    chat = fields.ForeignKeyField("models.ChatSession", related_name="chat_documents")
-    full_text = fields.TextField()
-    document_url = fields.TextField()
-    name = fields.CharField(max_length=255)
-    size = fields.IntField()
-    extracted_page_count = fields.IntField(default=0)
-
-    class Meta:
-        table = "chat_documents"
-
-
-class DocumentChunk(BaseModelWithoutID):
+class ChatImage(BaseModelWithoutID):
     id = fields.IntField(pk=True)
-    document = fields.ForeignKeyField("models.ChatDocument", related_name="chunks")
-    content = fields.TextField()
-    embedding = VectorField(vector_size=settings.OPENAI_VECTOR_SIZE)
+    message = fields.ForeignKeyField("models.ChatMessage", related_name="chat_images")
+    img_base64 = fields.TextField()
+    s3_url = fields.TextField()
+    is_relevant = fields.BooleanField(default=True)
 
     class Meta:
-        table = "document_chat_chunks"
+        table = "images"
 
+    class PydanticMeta:
+        exclude = ("img_base64",)
 
 class Usage(BaseModelWithoutID):
     id = fields.IntField(pk=True)

@@ -127,7 +127,7 @@ async def lifespan(app: FastAPI):
         await create_or_update_plans_from_file()
 
         # app.state.mistral_client = Mistral(settings.MISTRAL_API_KEY)
-        # app.state.openai_client = OpenAiAsyncClient(api_key=settings.OPENAI_API_KEY)
+        app.state.openai_client = OpenAiAsyncClient(api_key=settings.OPENAI_API_KEY)
         app.state.httpx_client = HttpxAsyncClient()
         app.state.stripe_client = StripeClient(api_key=settings.STRIPE_API_KEY)
 
@@ -161,7 +161,7 @@ init_db(app)
 logger.info("Database initialized with Tortoise ORM.")
 
 app.include_router(user.router)
-# app.include_router(chat.router)
+app.include_router(chat.router)
 # app.include_router(payment.router)
 # app.include_router(feedback.router)
 logger.info("API routers included: user, chat, payment, feedback.")
