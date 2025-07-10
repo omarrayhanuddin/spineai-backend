@@ -449,7 +449,7 @@ async def get_all_images(
     )
 
 
-@router.get("/session/report/all", response_model=list[GeneratedReportOut])
+@router.get("/report/all", response_model=list[GeneratedReportOut])
 async def get_all_reports(
     offset: int = 0, limit: int = 500, user: User = Depends(get_current_user)
 ):
@@ -461,7 +461,7 @@ async def get_all_reports(
     )
 
 
-@router.get("/session/report/{report_id}")
+@router.get("/report/{report_id}")
 async def get_report(report_id: str, user: User = Depends(get_current_user)):
     report = await GeneratedReport.get_or_none(id=report_id, user=user)
     if not report:
