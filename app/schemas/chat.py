@@ -1,10 +1,9 @@
 from pydantic import BaseModel
-from app.models.chat import ChatSession, ChatMessage, ChatImage
+from app.models.chat import ChatSession, ChatMessage, ChatImage, GeneratedReport
 from tortoise.contrib.pydantic.creator import pydantic_model_creator
 from tortoise import Tortoise
 from fastapi import UploadFile
-from datetime import datetime
-from typing import Optional, List
+
 
 Tortoise.init_models(
     [
@@ -26,8 +25,14 @@ MessageOut = pydantic_model_creator(
 )
 ImageOut = pydantic_model_creator(
     ChatImage,
-    include=["id", "s3_url", "is_relevant"],
+    include=["id", "s3_url", "is_relevant", "filename"],
     name="ImageOut",
+)
+
+GeneratedReportOut = pydantic_model_creator(
+    GeneratedReport,
+    include=["id", "title", "message_id"],
+    name="GeneratedReportOut",
 )
 
 

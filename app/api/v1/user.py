@@ -153,7 +153,6 @@ async def forgot_password(form: ForgotPassword, background_tasks: BackgroundTask
 
 @router.post("/reset-password")
 async def reset_password(form: ResetPassword):
-    print("working")
     user = await User.get_or_none(reset_token=form.token)
     if user is None:
         raise HTTPException(400, "Invalid token")

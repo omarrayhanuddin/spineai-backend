@@ -10,6 +10,7 @@ TORTOISE_ORM = {
                 "app.models.user",
                 "app.models.chat",
                 "app.models.payment",
+                "app.models.notification",
                 # "app.models.feedback",
                 "aerich.models",
             ],

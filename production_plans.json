@@ -1,38 +1,8 @@
 [
   {
-    "name": "Free",
-    "description": "Always Free Plan. Ideal for trying out.",
-    "price": 0.00,
-    "stripe_price_id": "price_1RVCdaCMetp7GiRI6ZnXljJU",
-    "page_limit": 1,
-    "message_limit": 30,
-    "model": "ft:open-mistral-7b:bda356fb:20250530:e1b991b2"
-  },
-  {
-    "name": "Basic",
-    "description": "Basic Features for regular personal use.",
-    "price": 19.99,
-    "stripe_price_id": "price_1RU5J9CMetp7GiRIj1M3nhoq",
-    "page_limit": 200,
-    "message_limit": 3000,
-    "model": "ft:open-mistral-7b:bda356fb:20250530:e1b991b2"
-  },
-  {
-    "name": "Professional",
-    "description": "Advanced Features for heavy individual or light business use.",
+    "name": "Spine Premium",
+    "description": "Premium Plan",
     "price": 39.99,
-    "stripe_price_id": "price_1RVChZCMetp7GiRIhgmIM8gh",
-    "page_limit": 400,
-    "message_limit": 6000,
-    "model": "ft:mistral-small-latest:bda356fb:20250530:8368a8a0"
-  },
-  {
-    "name": "Enterprise",
-    "description": "Comprehensive Features for teams and extensive operations.",
-    "price": 69.99,
-    "stripe_price_id": "price_1RU5PdCMetp7GiRIYoI8UUpq",
-    "page_limit": 600,
-    "message_limit": 9000,
-    "model": "ft:mistral-large-latest:bda356fb:20250530:a2f6cc46"
+    "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL"
   }
 ]

@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     FROM_EMAIL: EmailStr = Field(
         default_factory=lambda: os.getenv("SMTP_USER", ""), env="FROM_EMAIL"
     )
+    CELERY_BROKER_URL: str = Field(default="redis://localhost:6379/0", env="CELERY_BROKER_URL")
+    CELERY_RESULT_BACKEND: str = Field(default="redis://localhost:6379/0", env="CELERY_RESULT_BACKEND")
+
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"

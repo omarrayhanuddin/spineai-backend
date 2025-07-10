@@ -1,26 +1,8 @@
 [
   {
-    "name": "Free",
-    "description": "Always Free Plan. Ideal for trying out.",
-    "price": 0.00,
-    "stripe_price_id": "price_1RVFP4FsU5rS4Gm9EJ3iTOT0"
-  },
-  {
-    "name": "Basic",
-    "description": "Basic Features for regular personal use.",
-    "price": 19.99,
-    "stripe_price_id": "price_1RVFK7FsU5rS4Gm9WQOfrfxV"
-  },
-  {
-    "name": "Professional",
-    "description": "Advanced Features for heavy individual or light business use.",
+    "name": "Spine Premium",
+    "description": "Premium Plan",
     "price": 39.99,
-    "stripe_price_id": "price_1RVFYFFsU5rS4Gm9SjI51gdn"
-  },
-  {
-    "name": "Enterprise",
-    "description": "Comprehensive Features for teams and extensive operations.",
-    "price": 69.99,
-    "stripe_price_id": "price_1RVFdLFsU5rS4Gm932AJ53zt"
+    "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL"
   }
 ]

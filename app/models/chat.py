@@ -1,6 +1,6 @@
 from tortoise import fields
-from app.core.config import settings
 from app.models.base import BaseModelWithoutID
+from app.core.config import settings
 from tortoise_vector.field import VectorField
 
 
@@ -10,6 +10,7 @@ class ChatSession(BaseModelWithoutID):
     title = fields.TextField(null=True)
     findings = fields.JSONField(null=True)
     recommendations = fields.JSONField(null=True)
+    recommendations_notified_at = fields.DatetimeField(null=True)
     is_diagnosed = fields.BooleanField(default=False)
 
 
@@ -31,11 +32,23 @@ class ChatMessage(BaseModelWithoutID):
     class Meta:
         table = "messages"
 
+class GeneratedReport(BaseModelWithoutID):
+    id = fields.IntField(pk=True)
+    title = fields.TextField(null=True)
+    session = fields.ForeignKeyField("models.ChatSession", related_name="generated_reports")
+    user = fields.ForeignKeyField("models.User", related_name="generated_reports")
+    content = fields.TextField()
+    message_id=fields.CharField(max_length=255)
+
+    class Meta:
+        table = "ai_generated_reports"
+
 
 class ChatImage(BaseModelWithoutID):
     id = fields.IntField(pk=True)
     message = fields.ForeignKeyField("models.ChatMessage", related_name="chat_images")
     img_base64 = fields.TextField()
+    filename=fields.TextField(null=True)
     s3_url = fields.TextField()
     is_relevant = fields.BooleanField(default=True)
 

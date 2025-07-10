@@ -63,12 +63,17 @@ async def get_current_admin(user: User = Depends(get_current_user)):
 
 
 async def check_subscription_active(user: User = Depends(get_current_user)):
+    if user.subscription_id is None or user.subscription_id == "":
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Please subscribe to continue using the service.",
+        )
     if user.subscription_status == "past_due":
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail="Your payment failed. Please update your billing information.",
         )
-    elif user.subscription_status not in {"active", "free"}:
+    if user.subscription_status not in {"active"}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Subscription is not active (status: {user.subscription_status})",

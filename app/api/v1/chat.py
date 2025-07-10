@@ -1,31 +1,25 @@
 import base64, os, json, logging, asyncio
 from openai import AsyncClient
-from typing import AsyncGenerator, List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from app.api.dependency import (
     get_current_user,
-    get_mistral_client,
-    get_httpx_client,
     get_openai_client,
     check_subscription_active,
 )
-from app.services.ocr_service import AzureOCRService
 from app.models.user import User
-from app.models.chat import ChatSession, ChatMessage, ChatImage, Usage
+from app.models.chat import ChatSession, ChatMessage, ChatImage, GeneratedReport
 from app.models.payment import Plan
 from app.schemas.chat import (
     ChatSessionOut,
     MessageOut,
-    ChatMessageIn,
     RenameSession,
     ChatInput,
+    ImageOut,
+    GeneratedReportOut,
 )
 from app.utils.helpers import build_spine_diagnosis_prompt, build_post_diagnosis_prompt
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from tortoise_vector.expression import CosineSimilarity
 from tortoise.transactions import atomic
-from tiktoken import get_encoding
 from app.core.config import settings
 from datetime import datetime, timezone
 
@@ -40,71 +34,12 @@ CHUNK_BATCH_SIZE = 32
 router = APIRouter(prefix="/v1/chat", tags=["Chat Endpoints"])
 
 
-# @router.get("/dashboard", response_model=dict)
-# async def chat_dashboard(user: User = Depends(get_current_user)):
-#     try:
-#         conn = Tortoise.get_connection("default")
-#         plan = await Plan.get_or_none(stripe_price_id=user.current_plan)
-#         # Lifetime total
-#         total_sql = """
-#             SELECT SUM(usage_count) AS total
-#             FROM usages
-#             WHERE user_id = $1
-#             AND is_message = FALSE;
-#         """
-#         total_result = await conn.execute_query_dict(total_sql, [user.id])
-#         total_pages = (
-#             total_result[0]["total"]
-#             if total_result and total_result[0]["total"] is not None
-#             else 0
-#         )
-
-#         # Current month
-#         now_utc = datetime.now(timezone.utc)
-#         start_of_month = now_utc.replace(
-#             day=1, hour=0, minute=0, second=0, microsecond=0
-#         )
-#         monthly_sql = """
-#             SELECT SUM(usage_count) AS total
-#             FROM usages
-#             WHERE user_id = $1
-#             AND is_message = FALSE
-#             AND created_at >= $2;
-#         """
-#         monthly_result = await conn.execute_query_dict(
-#             monthly_sql, [user.id, start_of_month]
-#         )
-#         monthly_pages = (
-#             monthly_result[0]["total"]
-#             if monthly_result and monthly_result[0]["total"] is not None
-#             else 0
-#         )
-
-#         # Hour saved calculations
-#         total_hours = (
-#             round(total_pages / AVERAGE_PAGES_PER_HOUR, 2) if total_pages > 0 else 0
-#         )
-#         monthly_hours = (
-#             round(monthly_pages / AVERAGE_PAGES_PER_HOUR, 2) if monthly_pages > 0 else 0
-#         )
-#         monthly_plan_usage_left = plan.page_limit - monthly_pages
-
-#         return {
-#             "total_document_page_analyzed": total_pages,
-#             "total_hour_saved": total_hours,
-#             "monthly_document_page_analyzed": monthly_pages,
-#             "monthly_hour_saved": monthly_hours,
-#             "monthly_plan_usage_left": (
-#                 monthly_plan_usage_left if monthly_plan_usage_left >= 0 else 0
-#             ),
-#         }
-
-#     except Exception as e:
-#         logger.error(f"Error fetching user analysis summary: {e}")
-#         raise HTTPException(
-#             status_code=500,
-#             detail="Could not retrieve user analysis summary due to an internal error.",
-#         )
+@router.get("/dashboard", response_model=dict)
+async def user_dashboard(user: User = Depends(get_current_user)):
+    return {
+        "total_sessions": await user.chat_sessions.all().count(),
+        "total_images": await ChatImage.filter(message__session__user=user).count(),
+    }
 
 
 # def count_tokens(text: str, model: str = "text-embedding-3-large") -> int:
@@ -250,7 +185,7 @@ async def chat_message(
     limit: int = 200,
     user: User = Depends(get_current_user),
 ):
-    
+
     messages = (
         ChatMessage.filter(session_id=session_id, session__user=user)
         .prefetch_related("chat_images")
@@ -278,7 +213,7 @@ async def session_update(
     return {"message": "Updated Successfully"}
 
 
-@router.post("/session/create")
+@router.post("/session/create", dependencies=[Depends(check_subscription_active)])
 async def session_create(user: User = Depends(get_current_user)):
     return await ChatSession.create(user=user)
 
@@ -310,11 +245,13 @@ async def convert_image_to_base64(file: UploadFile) -> str:
 
     if not mime_type:
         mime_type = "application/octet-stream"
-    return f"data:{mime_type};base64,{base64_encoded_image}"
+    return f"data:{mime_type};base64,{base64_encoded_image}", file.filename
 
 
 @atomic
-@router.post("/session/{session_id}/send")
+@router.post(
+    "/session/{session_id}/send", dependencies=[Depends(check_subscription_active)]
+)
 async def send_session(
     session_id: str,
     form: ChatInput = None,
@@ -377,24 +314,32 @@ async def send_session(
         # Parse AI JSON
         user_markdown = ai_response.get("user", "")
         updated_recs = ai_response.get("updated_recommendations", {})
-
+        report = ai_response.get("report", {})
+        report_title = ai_response.get("report_title", {})
         # ✅ Save new recommendation updates if given
         if updated_recs:
             # merged_recs = {**(session.recommendations or {}), **updated_recs}
             await ChatSession.filter(id=session_id).update(recommendations=updated_recs)
 
         # 💬 Save AI's response
-        await ChatMessage.create(
+        ai_message = await ChatMessage.create(
             session_id=session_id,
             sender="system",
             content=user_markdown,
             embedding=await embed_text(user_markdown, openai_client=openai_client),
         )
+        if report:
+            await GeneratedReport.create(
+                session=session,
+                user=user,
+                content=report,
+                message_id=ai_message.id,
+                title=report_title,
+            )
 
         return {"message": user_markdown}
 
     # Process and store image uploads
-    image_data = []
     if form.images:
         tasks = [convert_image_to_base64(item.image) for item in form.images]
         base64_images = await asyncio.gather(*tasks)
@@ -402,7 +347,8 @@ async def send_session(
         image_data = [
             ChatImage(
                 message_id=chat_message.id,
-                img_base64=base64_image,
+                img_base64=base64_image[0],
+                filename=base64_image[1],
                 s3_url=item.s3_url,
             )
             for item, base64_image in zip(form.images, base64_images)
@@ -454,6 +400,8 @@ async def send_session(
             findings=backend.get("findings"),
             recommendations=backend.get("recommendations"),
             is_diagnosed=True,
+            recommendations_notified_at=datetime.now(timezone.utc),
+            titile=backend.get("title")
         )
 
     # 🚫 Mark irrelevant messages/images
@@ -487,3 +435,35 @@ async def get_all_session(
         .offset(offset)
         .limit(limit)
     )
+
+
+@router.get("/images/all", response_model=list[ImageOut])
+async def get_all_images(
+    offset: int = 0, limit: int = 500, user: User = Depends(get_current_user)
+):
+    return (
+        await ChatImage.filter(message__session__user=user)
+        .limit(limit)
+        .offset(offset)
+        .order_by("-created_at")
+    )
+
+
+@router.get("/session/report/all", response_model=list[GeneratedReportOut])
+async def get_all_reports(
+    offset: int = 0, limit: int = 500, user: User = Depends(get_current_user)
+):
+    return (
+        await GeneratedReport.filter(user=user)
+        .limit(limit)
+        .offset(offset)
+        .order_by("-created_at")
+    )
+
+
+@router.get("/session/report/{report_id}")
+async def get_report(report_id: str, user: User = Depends(get_current_user)):
+    report = await GeneratedReport.get_or_none(id=report_id, user=user)
+    if not report:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Report Not Found")
+    return report

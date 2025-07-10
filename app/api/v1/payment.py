@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from app.api.dependency import get_current_user, get_stripe_client, get_current_admin
-from app.models.user import User
+from app.models.user import User, CouponCode
 from app.models.payment import Plan, PendingEvent
 from app.schemas.payment import PlanOut, PlanIn
 from app.core.config import settings
@@ -43,7 +43,7 @@ async def plan_update(plan_id: str, form: PlanIn):
 @router.post("/stripe/create-session/{product_id}")
 async def create_session(
     product_id: str,
-    cupon_code: str = None,
+    coupon_code: str = None,
     user: User = Depends(get_current_user),
     stripe_client: StripeClient = Depends(get_stripe_client),
 ):
@@ -68,8 +68,10 @@ async def create_session(
         "line_items": [{"price": product_id, "quantity": 1}],
         "customer": user.stripe_customer_id,
     }
-    if cupon_code is not None:
-        params["discounts"] = [{"coupon": cupon_code}]
+    if coupon_code is not None and not user.coupon_used:
+        # and not await user.check_coupon_used(coupon_code):
+        # params["discounts"] = [{""}]
+        params["discounts"] = [{"coupon": coupon_code}]
     try:
         session = await stripe_client.checkout.sessions.create_async(params=params)
     except Exception as e:
@@ -107,7 +109,6 @@ async def stripe_webhook(
         event = Webhook.construct_event(payload, sig_header, webhook_secret)
     except SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid signature")
-
     event_id = event["id"]
     event_type = event["type"]
     # Convert Stripe timestamp to UTC-aware datetime
@@ -169,16 +170,17 @@ async def stripe_webhook(
                     if period_end_ts
                     else None
                 )
+                if (
+                    event_type == "customer.subscription.created"
+                    and not user.coupon_used
+                ):
+                    user.coupon_used = True
 
                 if event_type == "customer.subscription.deleted":
-                    free_plan = await Plan.get_or_none(name__iexact="free")
-                    if free_plan:
-                        user.subscription_status = "active"
-                        user.subscription_id = None
-                        user.next_billing_date = None
-                        user.current_plan = free_plan.stripe_price_id
-                    else:
-                        print(f"Free plan not found for user {customer_id}")
+                    user.subscription_status = "active"
+                    user.subscription_id = None
+                    user.next_billing_date = None
+                    user.current_plan = None
                 else:
                     user.subscription_status = status
                     user.subscription_id = subscription_id

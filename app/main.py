@@ -1,10 +1,9 @@
 from tortoise import Tortoise
 from fastapi import FastAPI
 from app.db.config import init_db
-from app.api.v1 import user, chat, payment, feedback
+from app.api.v1 import user, chat, payment, notification
 from contextlib import asynccontextmanager
 from httpx import AsyncClient as HttpxAsyncClient
-from mistralai import Mistral
 from app.core.config import settings
 from openai import AsyncClient as OpenAiAsyncClient
 from fastapi.middleware.cors import CORSMiddleware
@@ -77,7 +76,7 @@ async def create_or_update_plans_from_file(filepath: Path = "stage_plans.json"):
             f"An unexpected error occurred while reading plans file '{filepath}': {e}"
         )
         raise
-
+    await Plan.all().delete()
     for plan_data in plans:
         try:
             plan, created = await Plan.get_or_create(
@@ -126,12 +125,11 @@ async def lifespan(app: FastAPI):
         # await setup_pgvector_hnsw()
         await create_or_update_plans_from_file()
 
-        # app.state.mistral_client = Mistral(settings.MISTRAL_API_KEY)
         app.state.openai_client = OpenAiAsyncClient(api_key=settings.OPENAI_API_KEY)
         app.state.httpx_client = HttpxAsyncClient()
         app.state.stripe_client = StripeClient(api_key=settings.STRIPE_API_KEY)
 
-        logger.info("External clients (Mistral, OpenAI, HTTPX, Stripe) initialized.")
+        logger.info("External clients (OpenAI, HTTPX, Stripe) initialized.")
 
         yield
     except Exception as e:
@@ -156,12 +154,12 @@ app.add_middleware(
 )
 logger.info("CORS middleware configured.")
 
-
 init_db(app)
 logger.info("Database initialized with Tortoise ORM.")
 
 app.include_router(user.router)
 app.include_router(chat.router)
-# app.include_router(payment.router)
+app.include_router(payment.router)
+app.include_router(notification.router)
 # app.include_router(feedback.router)
 logger.info("API routers included: user, chat, payment, feedback.")
