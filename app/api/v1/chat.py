@@ -401,7 +401,7 @@ async def send_session(
             recommendations=backend.get("recommendations"),
             is_diagnosed=True,
             recommendations_notified_at=datetime.now(timezone.utc),
-            titile=backend.get("title")
+            title=backend.get("session_title")
         )
 
     # 🚫 Mark irrelevant messages/images
