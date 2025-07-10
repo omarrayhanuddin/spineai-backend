@@ -21,7 +21,6 @@ UserOut = pydantic_model_creator(
         "subscription_id",
         "current_plan",
         "next_billing_date",
-        "has_valid_card",
     ],
     # exclude=["chat_sessions"]
 )
@@ -53,3 +52,8 @@ class ResetPassword(BaseModel):
 
 class UpdateProfile(BaseModel):
     full_name: str
+
+
+class UserSettings(BaseModel):
+    allow_email_notifications: bool
+    allow_push_notifications: bool

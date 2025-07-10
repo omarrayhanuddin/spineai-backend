@@ -22,6 +22,8 @@ class User(BaseModelWithoutID):
     secret_key = fields.CharField(
         default=generate_secret_key, max_length=100, null=True
     )
+    allow_email_notifications = fields.BooleanField(default=True)
+    allow_push_notifications = fields.BooleanField(default=True)
 
     class Meta:
         table = "users"

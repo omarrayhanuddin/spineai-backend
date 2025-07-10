@@ -8,6 +8,7 @@ from app.schemas.users import (
     ForgotPassword,
     ChangePassword,
     UpdateProfile,
+    UserSettings,
 )
 from app.services.email_service import send_email
 from app.models.user import User
@@ -182,3 +183,11 @@ async def logout(user: User = Depends(get_current_user)):
     user.secret_key = generate_secret_key()
     await user.save()
     return {"message": "Logout successfull"}
+
+
+@router.put("/update-settings")
+async def update_user_settings(
+    settings: UserSettings, user: User = Depends(get_current_user)
+):
+    return await user.update_from_dict(settings.model_dump())
+

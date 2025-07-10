@@ -282,11 +282,19 @@ async def send_session(
             .order_by("distance")
             .limit(10)
         )
-
+        similar_messages_ids = [msg.id for msg in similar_messages]
+        last_few_messages = (
+            await ChatMessage.filter(session_id=session_id)
+            .exclude(id__in=similar_messages_ids)
+            .order_by("-created_at")
+            .limit(5)
+        )
         context_messages = [
+            {"sender": msg.sender, "text": msg.content} for msg in last_few_messages
+        ]
+        context_messages = context_messages + [
             {"sender": msg.sender, "text": msg.content} for msg in similar_messages
         ]
-
         # 🔧 Build post-diagnosis prompt
         messages = build_post_diagnosis_prompt(
             user={"name": user.full_name},
@@ -296,7 +304,6 @@ async def send_session(
             current_message=form.message,
             previous_messages=context_messages,
         )
-
         # 🤖 OpenAI call
         response = await openai_client.chat.completions.create(
             model="gpt-4.1-2025-04-14",  # or whatever version you're using
@@ -336,8 +343,11 @@ async def send_session(
                 message_id=ai_message.id,
                 title=report_title,
             )
-
-        return {"message": user_markdown}
+        data_response = {
+            "message": user_markdown,
+            "message_id": ai_message.id
+        }
+        return data_response
 
     # Process and store image uploads
     if form.images:
@@ -401,8 +411,9 @@ async def send_session(
             recommendations=backend.get("recommendations"),
             is_diagnosed=True,
             recommendations_notified_at=datetime.now(timezone.utc),
-            title=backend.get("session_title")
+            title=backend.get("session_title"),
         )
+        await session.refresh_from_db()
 
     # 🚫 Mark irrelevant messages/images
     msg_ids = backend.get("irrelevant_message_ids", [])
@@ -420,8 +431,14 @@ async def send_session(
         content=user_markdown,
         embedding=await embed_text(user_markdown, openai_client=openai_client),
     )
+    data_response = {
+        "message": user_markdown,
+        "message_id": ai_chat.id,
+    }
+    if session.title:
+        data_response["session_title"] = session.title
 
-    return {"message": user_markdown}
+    return data_response
 
 
 @router.get("/session/all", response_model=list[ChatSessionOut])
