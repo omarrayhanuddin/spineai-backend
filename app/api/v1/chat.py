@@ -428,6 +428,7 @@ async def send_session(
     data_response = {
         "message": user_markdown,
         "message_id": ai_chat.id,
+        "is_diagnosed": backend.get("is_diagnosed", False),
     }
     if session.title:
         data_response["session_title"] = session.title
