@@ -1,6 +1,6 @@
 import base64, os, json, logging, asyncio
 from openai import AsyncClient
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status, Form
 from app.api.dependency import (
     get_current_user,
     get_openai_client,
@@ -254,18 +254,22 @@ async def convert_image_to_base64(file: UploadFile) -> str:
 )
 async def send_session(
     session_id: str,
-    form: ChatInput = None,
+    message:str = Form(None),
+    files: list[UploadFile] = None,
+    s3_urls: list[str] = None,
     user: User = Depends(get_current_user),
     openai_client: AsyncClient = Depends(get_openai_client),
 ):
+    if not message and not files:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No message or files provided")
     session = await ChatSession.get_or_none(id=session_id, user=user)
     if not session:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Unauthorized Access")
 
     # Save user message and embed
-    embedded_message = await embed_text(form.message, openai_client=openai_client)
+    embedded_message = await embed_text(message, openai_client=openai_client)
     chat_message = await ChatMessage.create(
-        content=form.message,
+        content=message,
         session_id=session_id,
         sender="user",
         embedding=embedded_message,
@@ -295,18 +299,16 @@ async def send_session(
         context_messages = context_messages + [
             {"sender": msg.sender, "text": msg.content} for msg in similar_messages
         ]
-        # 🔧 Build post-diagnosis prompt
         messages = build_post_diagnosis_prompt(
             user={"name": user.full_name},
             session_id=session_id,
             findings=session.findings or {},
             recommendations=session.recommendations or {},
-            current_message=form.message,
+            current_message=message,
             previous_messages=context_messages,
         )
-        # 🤖 OpenAI call
         response = await openai_client.chat.completions.create(
-            model="gpt-4.1-2025-04-14",  # or whatever version you're using
+            model="gpt-4.1-2025-04-14",
             messages=messages,
             temperature=0.2,
             response_format={"type": "json_object"},
@@ -318,17 +320,13 @@ async def send_session(
         except Exception as e:
             raise HTTPException(500, f"AI response error: {e}")
 
-        # Parse AI JSON
         user_markdown = ai_response.get("user", "")
         updated_recs = ai_response.get("updated_recommendations", {})
         report = ai_response.get("report", {})
         report_title = ai_response.get("report_title", {})
-        # ✅ Save new recommendation updates if given
         if updated_recs:
-            # merged_recs = {**(session.recommendations or {}), **updated_recs}
             await ChatSession.filter(id=session_id).update(recommendations=updated_recs)
 
-        # 💬 Save AI's response
         ai_message = await ChatMessage.create(
             session_id=session_id,
             sender="system",
@@ -347,25 +345,28 @@ async def send_session(
             "message": user_markdown,
             "message_id": ai_message.id
         }
+        if report:
+            data_response["report_id"] = report.id
         return data_response
-
-    # Process and store image uploads
-    if form.images:
-        tasks = [convert_image_to_base64(item.image) for item in form.images]
+    if files:
+        if len(files) != len(s3_urls):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="Number of files and S3 URLs must match",
+            )
+        tasks = [convert_image_to_base64(item) for item in files]
         base64_images = await asyncio.gather(*tasks)
-
         image_data = [
             ChatImage(
                 message_id=chat_message.id,
                 img_base64=base64_image[0],
                 filename=base64_image[1],
-                s3_url=item.s3_url,
+                s3_url=s3_url,
             )
-            for item, base64_image in zip(form.images, base64_images)
+            for base64_image, s3_url in zip(base64_images, s3_urls)
         ]
         await ChatImage.bulk_create(image_data)
 
-    # 🔍 Fetch all previous messages and images for memory
     prev_messages = await ChatMessage.filter(
         session_id=session_id, is_relevant=True
     ).order_by("id")
@@ -381,30 +382,27 @@ async def send_session(
         {"image_id": img.id, "url": img.img_base64} for img in prev_images
     ]
 
-    # 🧠 Build OpenAI prompt
     messages = build_spine_diagnosis_prompt(
         session_id=session_id,
         previous_messages=prev_message_data,
         previous_images=prev_image_data,
         current_message=prev_message_data.pop(),
     )
-    # 🤖 Call OpenAI
     response = await openai_client.chat.completions.create(
-        model="gpt-4.1-2025-04-14",  # or gpt-4-vision-preview
+        model="gpt-4.1-2025-04-14",
         messages=messages,
         temperature=0.2,
-        response_format={"type": "json_object"},  # Ensure JSON response
+        response_format={"type": "json_object"},
     )
 
     try:
         result = response.choices[0].message.content
-        ai_response = json.loads(result)  # Safe JSON parsing
+        ai_response = json.loads(result)
     except Exception as e:
         raise HTTPException(500, f"AI response error: {e}")
 
     backend = ai_response.get("backend", {})
     user_markdown = ai_response.get("user", "")
-    # ✅ Update ChatSession with findings and recommendations if diagnosed
     if backend.get("is_diagnosed"):
         await ChatSession.filter(id=session_id).update(
             findings=backend.get("findings"),
@@ -415,7 +413,6 @@ async def send_session(
         )
         await session.refresh_from_db()
 
-    # 🚫 Mark irrelevant messages/images
     msg_ids = backend.get("irrelevant_message_ids", [])
     img_ids = backend.get("irrelevant_image_ids", [])
 
@@ -424,7 +421,6 @@ async def send_session(
     if img_ids:
         await ChatImage.filter(id__in=img_ids).update(is_relevant=False)
 
-    # 💬 Save AI's response as a ChatMessage
     ai_chat = await ChatMessage.create(
         session_id=session_id,
         sender="system",
