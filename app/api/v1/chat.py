@@ -254,7 +254,7 @@ async def convert_image_to_base64(file: UploadFile) -> str:
 )
 async def send_session(
     session_id: str,
-    message:str = Form(None),
+    message: str = Form(None),
     files: list[UploadFile] = None,
     s3_urls: list[str] = None,
     user: User = Depends(get_current_user),
@@ -267,7 +267,9 @@ async def send_session(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Unauthorized Access")
 
     # Save user message and embed
-    embedded_message = await embed_text(message, openai_client=openai_client)
+    embedded_message = (
+        await embed_text(message, openai_client=openai_client) if message else None
+    )
     chat_message = await ChatMessage.create(
         content=message,
         session_id=session_id,
@@ -333,20 +335,16 @@ async def send_session(
             content=user_markdown,
             embedding=await embed_text(user_markdown, openai_client=openai_client),
         )
+        data_response = {"message": user_markdown, "message_id": ai_message.id}
         if report:
-            await GeneratedReport.create(
+            generated_report = await GeneratedReport.create(
                 session=session,
                 user=user,
                 content=report,
                 message_id=ai_message.id,
                 title=report_title,
             )
-        data_response = {
-            "message": user_markdown,
-            "message_id": ai_message.id
-        }
-        if report:
-            data_response["report_id"] = report.id
+            data_response["report_id"] = generated_report.id
         return data_response
     if files:
         if len(files) != len(s3_urls):
