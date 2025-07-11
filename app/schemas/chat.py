@@ -16,7 +16,7 @@ Tortoise.init_models(
 
 
 ChatSessionOut = pydantic_model_creator(
-    ChatSession, include=["id", "title", "created_at"]
+    ChatSession, include=["id", "title", "created_at", "is_diagnosed"]
 )
 MessageOut = pydantic_model_creator(
     ChatMessage,
