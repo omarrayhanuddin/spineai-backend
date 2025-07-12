@@ -101,14 +101,14 @@ async def setup_pgvector_hnsw():
         logger.info("Ensured 'vector' extension is enabled for PostgreSQL.")
         await conn.execute_script(
             """
-            CREATE INDEX IF NOT EXISTS document_chat_chunks_embedding_hnsw_idx
-            ON document_chat_chunks
+            CREATE INDEX IF NOT EXISTS messages_embedding_hnsw_idx
+            ON messages
             USING hnsw (embedding vector_cosine_ops)
             WITH (m = 16, ef_construction = 64);
             """
         )
         logger.info(
-            "Ensured HNSW index on 'document_chat_chunks.embedding' is created."
+            "Ensured HNSW index on 'messages.embedding' is created."
         )
     except Exception as e:
         logger.critical(f"Failed to set up pgvector HNSW index: {e}")
@@ -122,7 +122,7 @@ async def lifespan(app: FastAPI):
     try:
         logger.info("Application lifespan startup initiated.")
         # await run_aerich_upgrade()
-        # await setup_pgvector_hnsw()
+        await setup_pgvector_hnsw()
         await create_or_update_plans_from_file()
 
         app.state.openai_client = OpenAiAsyncClient(api_key=settings.OPENAI_API_KEY)

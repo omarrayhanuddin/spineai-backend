@@ -31,7 +31,7 @@ ImageOut = pydantic_model_creator(
 
 GeneratedReportOut = pydantic_model_creator(
     GeneratedReport,
-    include=["id", "title", "message_id"],
+    include=["id", "title", "message_id", "created_at"],
     name="GeneratedReportOut",
 )
 
@@ -42,13 +42,3 @@ class ChatMessageIn(BaseModel):
 
 class RenameSession(BaseModel):
     title: str
-
-
-class UploadFileWIthLink(BaseModel):
-    s3_url: str
-    image: UploadFile | str
-
-
-class ChatInput(BaseModel):
-    message: str | None
-    images: list[UploadFileWIthLink] = []

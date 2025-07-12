@@ -48,6 +48,8 @@ class ChatImage(BaseModelWithoutID):
     id = fields.IntField(pk=True)
     message = fields.ForeignKeyField("models.ChatMessage", related_name="chat_images")
     img_base64 = fields.TextField()
+    file_type = fields.CharField(max_length=10, null=True)
+    meta_data = fields.JSONField(null=True)
     filename=fields.TextField(null=True)
     s3_url = fields.TextField()
     is_relevant = fields.BooleanField(default=True)

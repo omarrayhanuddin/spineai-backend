@@ -1,7 +1,7 @@
 from celery import Celery
 from celery.schedules import crontab
 from app.core.config import settings
-from datetime import timedelta # Import timedelta
+# from datetime import timedelta # Import timedelta
 
 def create_celery():
     celery_app = Celery(
@@ -22,7 +22,8 @@ def create_celery():
         beat_schedule={
             'send-recommendations-notification-hourly': {
                 'task': 'app.tasks.chat.send_recommendations_notification',
-                'schedule': crontab(minute=0),
+                'schedule': crontab(hour='10,14', minute=0),
+                # 'schedule': crontab(minute=0),
                 # 'schedule': timedelta(seconds=5),
             },
         }

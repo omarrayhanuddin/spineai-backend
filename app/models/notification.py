@@ -12,5 +12,4 @@ class Notification(BaseModelWithoutID):
 
     class Meta:
         table = "notifications"
-
     

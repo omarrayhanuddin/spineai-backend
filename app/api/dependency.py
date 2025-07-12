@@ -6,17 +6,12 @@ from app.models.user import User
 from app.core.config import settings
 from fastapi import Request
 from httpx import AsyncClient
-from mistralai import Mistral
 from openai import AsyncClient as OpenAiAsyncClient
 from stripe import StripeClient
 
 
 async def get_httpx_client(request: Request) -> AsyncClient:
     return request.app.state.httpx_client
-
-
-async def get_mistral_client(request: Request) -> Mistral:
-    return request.app.state.mistral_client
 
 
 async def get_openai_client(request: Request) -> OpenAiAsyncClient:

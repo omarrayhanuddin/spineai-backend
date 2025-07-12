@@ -13,10 +13,10 @@ from app.schemas.chat import (
     ChatSessionOut,
     MessageOut,
     RenameSession,
-    ChatInput,
     ImageOut,
     GeneratedReportOut,
 )
+from app.services.file_processing_sernice import FileProcessingService
 from app.utils.helpers import build_spine_diagnosis_prompt, build_post_diagnosis_prompt
 from tortoise_vector.expression import CosineSimilarity
 from tortoise.transactions import atomic
@@ -248,6 +248,9 @@ async def convert_image_to_base64(file: UploadFile) -> str:
     return f"data:{mime_type};base64,{base64_encoded_image}", file.filename
 
 
+import time
+
+
 @atomic
 @router.post(
     "/session/{session_id}/send", dependencies=[Depends(check_subscription_active)]
@@ -260,12 +263,16 @@ async def send_session(
     user: User = Depends(get_current_user),
     openai_client: AsyncClient = Depends(get_openai_client),
 ):
+    
     if not message and not files:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No message or files provided")
+    await user.check_free_trial_used(files, message)
+
     session = await ChatSession.get_or_none(id=session_id, user=user)
     if not session:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Unauthorized Access")
 
+    umsg_st = time.time()
     # Save user message and embed
     embedded_message = (
         await embed_text(message, openai_client=openai_client) if message else None
@@ -346,24 +353,45 @@ async def send_session(
             )
             data_response["report_id"] = generated_report.id
         return data_response
+
+    print("Message Embeddin Time", time.time() - umsg_st)
+    file_st = time.time()
     if files:
         if len(files) != len(s3_urls):
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
                 detail="Number of files and S3 URLs must match",
             )
-        tasks = [convert_image_to_base64(item) for item in files]
-        base64_images = await asyncio.gather(*tasks)
-        image_data = [
+        processed_files = await FileProcessingService.process_files(
+            files=files, s3_urls=s3_urls
+        )
+        file_data = [
             ChatImage(
                 message_id=chat_message.id,
-                img_base64=base64_image[0],
-                filename=base64_image[1],
-                s3_url=s3_url,
+                img_base64=file["base64_data"],
+                filename=file["filename"],
+                file_type=file["file_type"],
+                s3_url=file["s3_url"],
+                meta_data=file["metadata"],
             )
-            for base64_image, s3_url in zip(base64_images, s3_urls)
+            for file in processed_files
         ]
-        await ChatImage.bulk_create(image_data)
+        # tasks = [convert_image_to_base64(item) for item in files]
+        # base64_images = await asyncio.gather(*tasks)
+        # image_data = [
+        #     ChatImage(
+        #         message_id=chat_message.id,
+        #         img_base64=base64_image[0],
+        #         filename=base64_image[1],
+        #         s3_url=s3_url,
+        #     )
+        #     for base64_image, s3_url in zip(base64_images, s3_urls)
+        # ]
+        # await ChatImage.bulk_create(image_data)
+        await ChatImage.bulk_create(file_data)
+    print("Image Proccessing Time", time.time() - file_st)
+
+    build_pmt_st = time.time()
 
     prev_messages = await ChatMessage.filter(
         session_id=session_id, is_relevant=True
@@ -386,6 +414,8 @@ async def send_session(
         previous_images=prev_image_data,
         current_message=prev_message_data.pop(),
     )
+    print("Build Prompt Time", time.time() - build_pmt_st)
+    openai_st = time.time()
     response = await openai_client.chat.completions.create(
         model="gpt-4.1-2025-04-14",
         messages=messages,
@@ -398,7 +428,8 @@ async def send_session(
         ai_response = json.loads(result)
     except Exception as e:
         raise HTTPException(500, f"AI response error: {e}")
-
+    print("OpenAI Time", time.time() - openai_st)
+    final_response_st = time.time()
     backend = ai_response.get("backend", {})
     user_markdown = ai_response.get("user", "")
     if backend.get("is_diagnosed"):
@@ -432,7 +463,7 @@ async def send_session(
     }
     if session.title:
         data_response["session_title"] = session.title
-
+    print("Final Response Time", time.time() - final_response_st)
     return data_response
 
 
