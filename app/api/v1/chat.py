@@ -216,6 +216,7 @@ async def session_update(
 
 @router.post("/session/create", dependencies=[Depends(check_subscription_active)])
 async def session_create(user: User = Depends(get_current_user)):
+    await user.check_free_trial_used()
     return await ChatSession.create(user=user)
 
 
@@ -267,7 +268,8 @@ async def send_session(
     
     if not message and not files:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No message or files provided")
-    await user.check_free_trial_used(files, message)
+    
+    await user.check_free_trial_used(files)
 
     session = await ChatSession.get_or_none(id=session_id, user=user)
     if not session:

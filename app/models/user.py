@@ -35,12 +35,12 @@ class User(BaseModelWithoutID):
     def is_verified(self):
         return False if self.verification_token else True
 
-    async def check_free_trial_used(self, files=None, message=None):
+    async def check_free_trial_used(self, files=None):
         if files is None:
             files = []
         if self.current_plan not in (None, ""):
             return False
-        from app.models.chat import ChatMessage, ChatImage
+        from app.models.chat import ChatMessage, UserUploadedFile
 
         # Count uploaded images and non-image files in one pass
         uploaded_image_count = 0
@@ -58,11 +58,11 @@ class User(BaseModelWithoutID):
         try:
             total_message, total_images, total_files = await asyncio.gather(
                 ChatMessage.filter(session__user=self).count(),
-                ChatImage.filter(
-                    message__session__user=self, file_type="image"
+                UserUploadedFile.filter(
+                    user=self, file_type__in=["jpg", "jpeg", "png"]
                 ).count(),
-                ChatImage.filter(message__session__user=self)
-                .exclude(file_type="image")
+                UserUploadedFile.filter(user=self)
+                .exclude(file_type__in=["jpg", "jpeg", "png"])
                 .count(),
             )
         except Exception as e:
@@ -78,21 +78,12 @@ class User(BaseModelWithoutID):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Free trial message limit of 30 exceeded",
             )
-        if (
-            message is not None
-            and message.lower().strip() != ""
-            and total_message + 1 >= 30
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Free trial message limit of 30 would be exceeded with this message",
-            )
-        if total_images + uploaded_image_count >= 3:
+        if total_images + uploaded_image_count > 3:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Free trial image limit of 3 exceeded",
             )
-        if total_files + uploaded_file_count >= 1:
+        if total_files + uploaded_file_count > 1:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Free trial non-image file limit of 1 exceeded",
