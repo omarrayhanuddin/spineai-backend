@@ -369,6 +369,7 @@ async def send_session(
             file_type=file.filename.split(".")[-1].lower(),
             file_size=file.size,
             file_url=s3_url,
+            message=chat_message
 
         ) for file, s3_url in zip(files, s3_urls)]
         await UserUploadedFile.bulk_create(user_uploaded_files)

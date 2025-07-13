@@ -19,7 +19,7 @@ ChatSessionOut = pydantic_model_creator(
 )
 MessageOut = pydantic_model_creator(
     ChatMessage,
-    include=["id", "sender", "content", "created_at", "updated_at", "chat_images"],
+    include=["id", "sender", "content", "created_at", "updated_at", "user_uploaded_files"],
     name="MessageOut",
 )
 ImageOut = pydantic_model_creator(

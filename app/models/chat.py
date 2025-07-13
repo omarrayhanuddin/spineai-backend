@@ -63,6 +63,7 @@ class ChatImage(BaseModelWithoutID):
     
 class UserUploadedFile(BaseModelWithoutID):
     id = fields.IntField(pk=True)
+    message = fields.ForeignKeyField("models.ChatMessage", related_name="user_uploaded_files", null=True)
     user = fields.ForeignKeyField("models.User", related_name="uploaded_files")
     file_name = fields.CharField(max_length=255)
     file_type = fields.CharField(max_length=10)
@@ -71,6 +72,9 @@ class UserUploadedFile(BaseModelWithoutID):
 
     class Meta:
         table = "uploaded_files"
+
+    class PydanticMeta:
+        exclude = ("user", "message")
 
 class Usage(BaseModelWithoutID):
     id = fields.IntField(pk=True)
