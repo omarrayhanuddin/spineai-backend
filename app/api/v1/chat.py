@@ -138,7 +138,6 @@ async def send_session(
     total_usage = []
     if not message and not files:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No message or files provided")
-
     await user.check_free_trial_used(files)
 
     session = await ChatSession.get_or_none(id=session_id, user=user)
@@ -199,6 +198,7 @@ async def send_session(
             temperature=0.2,
             response_format={"type": "json_object"},
         )
+        await Usage.bulk_create(total_usage)
 
         try:
             result = response.choices[0].message.content
@@ -303,6 +303,7 @@ async def send_session(
         previous_images=prev_image_data,
         current_message=prev_message_data.pop(),
     )
+
     print("Build Prompt Time", time.time() - build_pmt_st)
     openai_st = time.time()
     response = await openai_client.chat.completions.create(

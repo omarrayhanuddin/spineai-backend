@@ -73,21 +73,23 @@ class User(BaseModelWithoutID):
             )
 
         # Check limits and raise specific HTTP exceptions
+        
         if total_message >= 30:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Free trial message limit of 30 exceeded",
             )
-        if total_images + uploaded_image_count > 3:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Free trial image limit of 3 exceeded",
-            )
-        if total_files + uploaded_file_count > 1:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Free trial non-image file limit of 1 exceeded",
-            )
+        if files:
+            if total_images + uploaded_image_count > 3:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Free trial image limit of 3 exceeded",
+                )
+            if total_files + uploaded_file_count > 1:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Free trial non-image file limit of 1 exceeded",
+                )
 
         return False
 
