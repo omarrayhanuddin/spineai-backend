@@ -169,7 +169,61 @@ def build_spine_diagnosis_prompt(
                 "- Discitis or endplate erosion\n"
                 "- Transitional vertebra (lumbarization/sacralization)\n"
                 "- Spina bifida occulta\n"
-                "- Block vertebra"
+                "- Block vertebra\n\n"
+                "--- General AI Protocol ---\n"
+                "For every image you analyze, include the following structured output:\n"
+                "Imaging Modality: (X-ray, MRI, etc.)\n"
+                "Region/Area Scanned: (e.g., Lumbar Spine, Chest)\n"
+                "Findings: Describe abnormalities, if any (e.g., 'disc herniation at L4-L5')\n"
+                "Impression: A clear summary (e.g., 'Mild degenerative disc disease')\n"
+                "Recommendations: Further tests, specialist referral, treatment options\n\n"
+                "Example structured output for image analysis:\n"
+                "Imaging Modality: X-ray\n"
+                "Region Scanned: Cervical Spine\n"
+                "Findings:\n"
+                "- Loss of normal cervical lordosis\n"
+                "- Mild narrowing of the C5-C6 intervertebral disc space\n"
+                "- No evidence of fracture or dislocation\n"
+                "Impression:\n"
+                "Early degenerative changes in the cervical spine, likely consistent with spondylosis.\n"
+                "Recommendations:\n"
+                "- Consider MRI for detailed evaluation if symptoms persist\n"
+                "- Physical therapy and posture correction advised\n"
+                "- Neurology referral if neurological deficits are present\n\n"
+                "--- Diagnosis Flow ---\n"
+                "Phase 1: Clinical Intake\n"
+                "Ask the user for relevant information before offering any diagnosis. Include questions like:\n"
+                "- What symptoms are you experiencing?\n"
+                "- When did the symptoms start?\n"
+                "- Have you seen a doctor before for this issue?\n"
+                "- What did your previous doctor say?\n"
+                "- Do you have prior reports or scans (X-ray, MRI, CT)?\n"
+                "- Please upload any medical images or documents you have.\n\n"
+                "Collect at least one clear answer from each of these categories before proceeding to diagnosis:\n"
+                "- Symptoms\n"
+                "- Imaging and Reports\n"
+                "- Previous Consultations\n"
+                "- Medical History\n"
+                "- Lifestyle Factors\n\n"
+                "Wait for the user to provide enough data. Do not attempt to diagnose before the following are available:\n"
+                "- Patient history or complaints\n"
+                "- Medical images (X-ray, MRI, etc.)\n"
+                "- Optional: Previous doctor's notes, reports, or prescriptions\n\n"
+                "If a required file or detail is missing, prompt the user to provide it before moving on. Avoid repeating questions already answered. Track the intake session context.\n"
+                "Based on uploaded report, ask follow-up questions (e.g., pain scale, duration, trauma history).\n\n"
+                "Phase 2: Diagnosis\n"
+                "Once sufficient information is available:\n"
+                "- Interpret the uploaded medical images\n"
+                "- Correlate findings with the symptoms and history\n"
+                "- Provide a structured diagnostic report with:\n"
+                "  - Modality (X-ray, MRI, CT)\n"
+                "  - Area of Scan\n"
+                "  - Findings (observations)\n"
+                "  - Impression (summary diagnosis)\n"
+                "  - Recommendations (referrals, next steps)\n\n"
+                "Safety Reminder:\n"
+                "If any information is missing, or if image quality is poor, tell the user that you cannot proceed safely. Always clarify that you are an AI and this does not replace medical consultation.\n"
+                "If image is blurry or absent, respond: \"Please upload a clear X-ray or MRI image so I can analyze it properly.\"\n"
             ),
         }
     ]
@@ -222,7 +276,7 @@ def build_spine_diagnosis_prompt(
             "text": (
                 "\n## Output Format\n"
                 "Respond ONLY in this JSON format:\n\n"
-                "```json\n"
+                "json\n"
                 "{\n"
                 '  "backend": {\n'
                 '    "session_title": generate based on overall user condition keep it null if not diagnosed yet,\n'
@@ -246,8 +300,8 @@ def build_spine_diagnosis_prompt(
                 '  },\n'
                 '  "user": "<markdown explanation for the patient>"\n'
                 "}\n"
-                "```\n\n"
-                "**Crucially, for the 'findings' section, aim to use the specific phrases provided in the system prompt. If a finding is clearly observed but not on the list, you may describe it concisely.**\n\n" # ***KEY MODIFICATION HERE***
+                "\n\n"
+                "*Crucially, for the 'findings' section, aim to use the specific phrases provided in the system prompt. If a finding is clearly observed but not on the list, you may describe it concisely.\n\n" # ***KEY MODIFICATION HERE**
                 "Leave findings and recommendations as null if diagnosis isn't yet possible."
             ),
         }
@@ -265,7 +319,7 @@ def build_post_diagnosis_prompt(
     findings: Dict,
     recommendations: Dict,
     previous_messages: List[Dict],  # [{"sender": "user"/"ai", "text": str}]
-    current_message: Dict           # {"id": int, "text": str}
+    current_message: Dict          # {"id": int, "text": str}
 ) -> List[Dict]:
     """
     Constructs OpenAI-compatible messages[] for post-diagnosis AI use.
@@ -281,7 +335,7 @@ def build_post_diagnosis_prompt(
             if isinstance(value, dict):
                 parts.append(f"### 🦴 {title}")
                 for sub_key, sub_value in value.items():
-                    parts.append(f"- **{sub_key.replace('_', ' ').title()}**: {sub_value}")
+                    parts.append(f"- *{sub_key.replace('_', ' ').title()}*: {sub_value}")
             elif isinstance(value, list):
                 parts.append(f"### 📌 {title}")
                 parts.extend([f"- {v}" for v in value])
@@ -296,12 +350,12 @@ def build_post_diagnosis_prompt(
         for key, values in recommendations.items():
             title = key.replace("_", " ").title()
             if isinstance(values, list):
-                formatted = "\n".join([f"  - {v}" for v in values]) if values else "  - None provided"
+                formatted = "\n".join([f"   - {v}" for v in values]) if values else "   - None provided"
             elif isinstance(values, str):
-                formatted = f"  - {values}" if values.strip() else "  - None provided"
+                formatted = f"   - {values}" if values.strip() else "   - None provided"
             else:
-                formatted = "  - Unknown format"
-            out.append(f"- **{title}**:\n{formatted}")
+                formatted = "   - Unknown format"
+            out.append(f"- *{title}*:\n{formatted}")
         return "\n".join(out)
 
     # 🧠 1. System message
@@ -317,9 +371,9 @@ def build_post_diagnosis_prompt(
             "   - Progress or lack of progress\n"
             "   - New symptoms reported\n"
             "   - Behavioral changes mentioned\n"
-            "4. If the user requests a **report**, generate a medical-style progress report using the previous findings and updated recommendations. Format it clearly in proper markdown, following the structured template below for spine X-ray reports, adapted to the specific spine region (cervical, thoracic, or lumbar) relevant to the patient's condition. Include a report title based on the spine region (e.g., 'Cervical Spine X-Ray Report').\n\n"
-            "**Spine X-Ray Report Template (for the `report` field when requested):**\n"
-            "```markdown\n"
+            "4. If the user requests a *report*, generate a medical-style progress report using the previous findings and updated recommendations. Format it clearly in proper markdown, following the structured template below for spine X-ray reports, adapted to the specific spine region (cervical, thoracic, or lumbar) relevant to the patient's condition. Include a report title based on the spine region (e.g., 'Cervical Spine X-Ray Report').\n\n"
+            "**Spine X-Ray Report Template (for the report field when requested):\n"
+            "markdown\n"
             "# [CERVICAL/THORACIC/LUMBAR] SPINE X-RAY REPORT\n\n"
             "**Patient Name:** [Patient Name]\n"
             "**Date of Exam:** [Date]\n"
@@ -356,7 +410,7 @@ def build_post_diagnosis_prompt(
             "1. [e.g., [Cervical/Thoracic/Lumbar] spine with (normal alignment / mild degenerative change at [level])]\n"
             "2. [e.g., No acute fracture or subluxation]\n"
             "3. [e.g., Recommend clinical correlation or advanced imaging if symptoms persist]\n"
-            "```\n\n"
+            "\n\n"
             "Never attempt to re-diagnose symptoms or images.\n\n"
             "Respond in the following JSON format ONLY:\n\n"
             "{\n"
@@ -370,14 +424,14 @@ def build_post_diagnosis_prompt(
             "  \"report_title\": \"[e.g., Cervical Spine X-Ray Report, Thoracic Spine X-Ray Report, or Lumbar Spine X-Ray Report]\",\n"
             "  \"report\": \"### Markdown-formatted ** Only The Report Part** to store in the database if user asked for report else omit this key\"\n"
             "}\n\n"
-            "If no recommendations have changed, omit `updated_recommendations`.\n"
-            "Always include the `user` markdown response except when asked for response directly.\n"
-            "When generating the report, fill in the template with specific findings relevant to the patient's condition, ensuring accuracy and consistency with prior diagnoses. Include the `report_title` key only when a report is requested, specifying the spine region addressed (e.g., 'Cervical Spine X-Ray Report')."
+            "If no recommendations have changed, omit updated_recommendations.\n"
+            "Always include the user markdown response except when asked for response directly.\n"
+            "When generating the report, fill in the template with specific findings relevant to the patient's condition, ensuring accuracy and consistency with prior diagnoses. Include the report_title key only when a report is requested, specifying the spine region addressed (e.g., 'Cervical Spine X-Ray Report')."
         )
     }
 ]
 
-    # 🗣️ 2. User context message
+    # 🗣 2. User context message
     user_message_block = {
         "role": "user",
         "content": []
@@ -414,7 +468,7 @@ def build_post_diagnosis_prompt(
                 "text": f"- [{prefix}] {msg['text']}"
             })
 
-    # ✍️ Current patient input
+    # ✍ Current patient input
     user_message_block["content"].append({
         "type": "text",
         "text": "\n### 💬 Patient's New Message:"
