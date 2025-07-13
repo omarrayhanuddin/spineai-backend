@@ -78,10 +78,10 @@ class UserUploadedFile(BaseModelWithoutID):
 
 class Usage(BaseModelWithoutID):
     id = fields.IntField(pk=True)
-    user = fields.ForeignKeyField("models.User", related_name="page_usages")
+    usage_type =fields.CharField(max_length=10)
+    user = fields.ForeignKeyField("models.User", related_name="usage")
     usage_count = fields.IntField(default=1)
     source = fields.CharField(max_length=100)
-    is_message = fields.BooleanField(default=False)
 
     class Meta:
         table = "usages"

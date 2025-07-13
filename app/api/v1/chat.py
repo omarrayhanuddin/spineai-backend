@@ -7,8 +7,14 @@ from app.api.dependency import (
     check_subscription_active,
 )
 from app.models.user import User
-from app.models.chat import ChatSession, ChatMessage, ChatImage, GeneratedReport, UserUploadedFile
-from app.models.payment import Plan
+from app.models.chat import (
+    ChatSession,
+    ChatMessage,
+    ChatImage,
+    GeneratedReport,
+    UserUploadedFile,
+    Usage,
+)
 from app.schemas.chat import (
     ChatSessionOut,
     MessageOut,
@@ -39,145 +45,9 @@ router = APIRouter(prefix="/v1/chat", tags=["Chat Endpoints"])
 async def user_dashboard(user: User = Depends(get_current_user)):
     return {
         "total_sessions": await user.chat_sessions.all().count(),
-        "total_images": await ChatImage.filter(message__session__user=user).count(),
+        "total_files": await UserUploadedFile.filter(user=user).count(),
+        "total_reports":await GeneratedReport.filter(user=user).count()
     }
-
-
-# def count_tokens(text: str, model: str = "text-embedding-3-large") -> int:
-#     encoding = get_encoding("cl100k_base")
-#     return len(encoding.encode(text))
-
-
-# async def process_batch(batch: List[str], openai_client, document):
-#     resp = await openai_client.embeddings.create(
-#         model="text-embedding-3-large",
-#         input=batch,
-#         dimensions=settings.OPENAI_VECTOR_SIZE,
-#     )
-#     for chunk_text, item in zip(batch, resp.data):
-#         ...
-
-
-# async def batch_embed_chunks(chunks: List[str], openai_client, document):
-#     batch = []
-#     current_tokens = 0
-#     for chunk in chunks:
-#         token_count = count_tokens(chunk)
-#         if (
-#             current_tokens + token_count > BATCH_TOKEN_LIMIT
-#             or len(batch) >= CHUNK_BATCH_SIZE
-#         ):
-#             await process_batch(batch, openai_client, document)
-#             batch = []
-#             current_tokens = 0
-#         batch.append(chunk)
-#         current_tokens += token_count
-#     if batch:
-#         await process_batch(batch, openai_client, document)
-
-
-# @router.post("/create", response_model=ChatSessionOut)
-# async def create_chat(
-#     files: List[UploadFile] = File(...),
-#     user: User = Depends(check_subscription_active),
-#     client=Depends(get_httpx_client),
-#     openai_client=Depends(get_openai_client),
-# ):
-#     if not files:
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="At least one file must be uploaded.",
-#         )
-
-#     # Validate total file size and check for emptiness
-#     total_size = 0
-#     for file in files:
-#         first_chunk = await file.read(1024)
-#         if not first_chunk:
-#             raise HTTPException(
-#                 status_code=status.HTTP_400_BAD_REQUEST,
-#                 detail=f"File '{file.filename}' is empty.",
-#             )
-#         await file.seek(0)
-#         total_size += file.size or len(await file.read())
-#         await file.seek(0)
-
-#     if total_size > MAX_FILE_SIZE_BYTES:
-#         raise HTTPException(
-#             status_code=status.HTTP_413_PAYLOAD_TOO_LARGE,
-#             detail=f"Total size of uploaded files ({total_size / (1024 * 1024):.2f} MB) exceeds the limit of {MAX_FILE_SIZE_BYTES / (1024 * 1024):.0f} MB.",
-#         )
-
-#     # Check subscription limits
-#     exceeded, plan_limit, plan_name = await user.monthly_page_limit_exceeded()
-#     if exceeded:
-#         raise HTTPException(
-#             status_code=400,
-#             detail=f"You have exceeded your monthly page limit of {plan_limit} pages for the '{plan_name}' plan. Please upgrade your plan or wait until next month to continue.",
-#         )
-
-#     # Read all files and extract text concurrently
-#     azur_ocr = AzureOCRService(client=client)
-#     file_data = []
-#     total_page_count = 0
-
-#     async def process_file(file: UploadFile):
-#         file_bytes = await file.read()
-#         lines, page_count = await azur_ocr.extract_text(file_bytes)
-#         if not lines:
-#             raise HTTPException(
-#                 400, f"Unable to extract text from file '{file.filename}'"
-#             )
-#         return {
-#             "filename": file.filename,
-#             "size": file.size or len(file_bytes),
-#             "lines": lines,
-#             "page_count": page_count,
-#             "full_text": "\n".join(lines),
-#         }
-
-#     tasks = [process_file(file) for file in files]
-#     results = await asyncio.gather(*tasks, return_exceptions=True)
-#     for result in results:
-#         if isinstance(result, Exception):
-#             raise HTTPException(400, f"Error processing file: {str(result)}")
-#         file_data.append(result)
-#         total_page_count += result["page_count"]
-
-#     # Combine all extracted text into one
-#     full_text = "\n".join(data["full_text"] for data in file_data)
-#     if not full_text.strip():
-#         raise HTTPException(400, "No text extracted from any file")
-
-#     # Prepare metadata for combined document
-#     session_title = (
-#         file_data[0]["filename"] if len(file_data) == 1 else "Multiple Documents"
-#     )
-
-#     combined_size = sum(d["size"] for d in file_data)
-
-#     # Create ChatSession, Usage, and single ChatDocument
-#     async with in_transaction():
-#         session = await ChatSession.create(user=user, title=session_title)
-#         await Usage.create(
-#             user=user, usage_count=total_page_count, source=session_title
-#         )
-#         document = await ChatMessage.create(
-#             chat=session,
-#             full_text=full_text,
-#             document_url="not_applicable_or_set_later",
-#             name=session_title,
-#             size=combined_size,
-#             extracted_page_count=total_page_count,
-#         )
-
-#     # Split text and embed chunks
-#     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
-#     chunks = splitter.split_text(full_text)
-#     await batch_embed_chunks(chunks, openai_client, document)
-
-#     return session
-
 
 @router.get("/session/{session_id}/all", response_model=list[MessageOut])
 async def chat_message(
@@ -265,10 +135,10 @@ async def send_session(
     user: User = Depends(get_current_user),
     openai_client: AsyncClient = Depends(get_openai_client),
 ):
-    
+    total_usage = []
     if not message and not files:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No message or files provided")
-    
+
     await user.check_free_trial_used(files)
 
     session = await ChatSession.get_or_none(id=session_id, user=user)
@@ -286,6 +156,10 @@ async def send_session(
         sender="user",
         embedding=embedded_message,
     )
+    if message:
+        total_usage.append(
+            Usage(user=user, usage_count=1, source=session.id, usage_type="message")
+        )
     if session.is_diagnosed:
         similar_messages = (
             await ChatMessage.filter(session_id=session_id)
@@ -365,16 +239,29 @@ async def send_session(
                 status.HTTP_400_BAD_REQUEST,
                 detail="Number of files and S3 URLs must match",
             )
-        user_uploaded_files =[UserUploadedFile(
-            user=user,
-            file_name=file.filename,
-            file_type=file.filename.split(".")[-1].lower(),
-            file_size=file.size,
-            file_url=s3_url,
-            message=chat_message
+        user_uploaded_files = [
+            UserUploadedFile(
+                user=user,
+                file_name=file.filename,
+                file_type=file.filename.split(".")[-1].lower(),
+                file_size=file.size,
+                file_url=s3_url,
+                message=chat_message,
+            )
+            for file, s3_url in zip(files, s3_urls)
+        ]
 
-        ) for file, s3_url in zip(files, s3_urls)]
+        total_usage += [
+            Usage(
+                user=user,
+                usage_count=1,
+                source=session.id,
+                usage_type=file.filename.split(".")[-1].lower(),
+            )
+            for file in files
+        ]
         await UserUploadedFile.bulk_create(user_uploaded_files)
+        await Usage.bulk_create(total_usage)
 
         processed_files = await FileProcessingService.process_files(
             files=files, s3_urls=s3_urls
@@ -390,18 +277,6 @@ async def send_session(
             )
             for file in processed_files
         ]
-        # tasks = [convert_image_to_base64(item) for item in files]
-        # base64_images = await asyncio.gather(*tasks)
-        # image_data = [
-        #     ChatImage(
-        #         message_id=chat_message.id,
-        #         img_base64=base64_image[0],
-        #         filename=base64_image[1],
-        #         s3_url=s3_url,
-        #     )
-        #     for base64_image, s3_url in zip(base64_images, s3_urls)
-        # ]
-        # await ChatImage.bulk_create(image_data)
         await ChatImage.bulk_create(file_data)
     print("Image Proccessing Time", time.time() - file_st)
 
@@ -528,14 +403,21 @@ async def get_report(report_id: str, user: User = Depends(get_current_user)):
 
 @router.get("/upload/all", response_model=list[UserUploadedFileOut])
 async def get_all_uploaded_files(
-    offset: int = 0, limit: int = 500, file_type:str=None, user: User = Depends(get_current_user)
-):  
+    offset: int = 0,
+    limit: int = 500,
+    file_type: str = None,
+    user: User = Depends(get_current_user),
+):
     uploaded_files = UserUploadedFile.filter(user=user)
     if file_type:
         if file_type == "image":
-            uploaded_files = UserUploadedFile.filter(user=user, file_type__in=["jpg", "jpeg", "png"])
+            uploaded_files = UserUploadedFile.filter(
+                user=user, file_type__in=["jpg", "jpeg", "png"]
+            )
         elif file_type == "pdf":
             uploaded_files = UserUploadedFile.filter(user=user, file_type__in=["pdf"])
         elif file_type == "dcm":
-            uploaded_files = UserUploadedFile.filter(user=user, file_type__in=["dcm", "dicom"])
+            uploaded_files = UserUploadedFile.filter(
+                user=user, file_type__in=["dcm", "dicom"]
+            )
     return await uploaded_files.limit(limit).offset(offset).order_by("-created_at")

@@ -40,7 +40,7 @@ class User(BaseModelWithoutID):
             files = []
         if self.current_plan not in (None, ""):
             return False
-        from app.models.chat import ChatMessage, UserUploadedFile
+        from app.models.chat import Usage
 
         # Count uploaded images and non-image files in one pass
         uploaded_image_count = 0
@@ -57,12 +57,12 @@ class User(BaseModelWithoutID):
         # Run database queries concurrently
         try:
             total_message, total_images, total_files = await asyncio.gather(
-                ChatMessage.filter(session__user=self).count(),
-                UserUploadedFile.filter(
-                    user=self, file_type__in=["jpg", "jpeg", "png"]
+                Usage.filter(user=self, usage_type="message").count(),
+                Usage.filter(
+                    user=self, usage_type__in=["jpg", "jpeg", "png"]
                 ).count(),
-                UserUploadedFile.filter(user=self)
-                .exclude(file_type__in=["jpg", "jpeg", "png"])
+                Usage.filter(user=self)
+                .exclude(usage_type__in=["jpg", "jpeg", "png"])
                 .count(),
             )
         except Exception as e:
