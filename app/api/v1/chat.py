@@ -7,7 +7,7 @@ from app.api.dependency import (
     check_subscription_active,
 )
 from app.models.user import User
-from app.models.chat import ChatSession, ChatMessage, ChatImage, GeneratedReport
+from app.models.chat import ChatSession, ChatMessage, ChatImage, GeneratedReport, UserUploadedFile
 from app.models.payment import Plan
 from app.schemas.chat import (
     ChatSessionOut,
@@ -15,6 +15,7 @@ from app.schemas.chat import (
     RenameSession,
     ImageOut,
     GeneratedReportOut,
+    UserUploadedFileOut,
 )
 from app.services.file_processing_sernice import FileProcessingService
 from app.utils.helpers import build_spine_diagnosis_prompt, build_post_diagnosis_prompt
@@ -362,6 +363,16 @@ async def send_session(
                 status.HTTP_400_BAD_REQUEST,
                 detail="Number of files and S3 URLs must match",
             )
+        user_uploaded_files =[UserUploadedFile(
+            user=user,
+            file_name=file.filename,
+            file_type=file.filename.split(".")[-1].lower(),
+            file_size=file.size,
+            file_url=s3_url,
+
+        ) for file, s3_url in zip(files, s3_urls)]
+        await UserUploadedFile.bulk_create(user_uploaded_files)
+
         processed_files = await FileProcessingService.process_files(
             files=files, s3_urls=s3_urls
         )
@@ -510,3 +521,18 @@ async def get_report(report_id: str, user: User = Depends(get_current_user)):
     if not report:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Report Not Found")
     return report
+
+
+@router.get("/upload/all", response_model=list[UserUploadedFileOut])
+async def get_all_uploaded_files(
+    offset: int = 0, limit: int = 500, file_type:str=None, user: User = Depends(get_current_user)
+):  
+    uploaded_files = UserUploadedFile.filter(user=user)
+    if file_type:
+        if file_type == "image":
+            uploaded_files = UserUploadedFile.filter(user=user, file_type__in=["jpg", "jpeg", "png"])
+        elif file_type == "pdf":
+            uploaded_files = UserUploadedFile.filter(user=user, file_type__in=["pdf"])
+        elif file_type == "dcm":
+            uploaded_files = UserUploadedFile.filter(user=user, file_type__in=["dcm", "dicom"])
+    return await uploaded_files.limit(limit).offset(offset).order_by("-created_at")

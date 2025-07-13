@@ -5,6 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from app.core.config import settings
 import secrets
 import random
+from typing import List, Dict, Optional
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -256,120 +257,6 @@ def build_spine_diagnosis_prompt(
     messages.append(user_message_block)
     return messages
 
-def build_spine_diagnosis_prompt_v1(
-    session_id: str,
-    previous_messages: List[Dict],   # [{"id": int, "sender": "user/ai", "text": str}]
-    previous_images: List[Dict],     # [{"image_id": int, "url": str}]
-    current_message: str,            # new symptom input
-) -> List[Dict]:
-    """
-    Constructs the OpenAI-compatible messages list for vision-based spine diagnosis.
-
-    Returns:
-        List[Dict]: messages[] array for openai.ChatCompletion.create(...)
-    """
-
-    # 🧠 1. System prompt
-    messages = [{
-        "role": "system",
-        "content": (
-            "You are a medical assistant AI that diagnoses spine-related issues using X-ray/MRI images and patient symptoms.\n"
-            "You will receive:\n"
-            "- A unique session ID\n"
-            "- Prior patient messages and images\n"
-            "- The latest input (text + images)\n\n"
-            "Your tasks:\n"
-            "1. Analyze images and symptom messages.\n"
-            "2. If unclear or insufficient, ask for clarification.\n"
-            "3. Return a strict JSON with:\n"
-            "   - `backend`: includes diagnosis data for internal use\n"
-            "   - `user`: a markdown explanation for the patient\n"
-            "   (see format below)\n\n"
-            "If diagnosis is not possible, leave `findings` and `recommendations` as null, and explain what’s missing in the `user` section."
-        )
-    }]
-
-    # 🗣️ 2. User message + previous history
-    user_message_block = {
-        "role": "user",
-        "content": []
-    }
-
-    # 📄 Session & prior messages
-    user_message_block["content"].append({
-        "type": "text",
-        "text": f"Session ID: {session_id}\n\n## Previous Messages:\n"
-    })
-
-    for msg in previous_messages:
-        prefix = "User" if msg["sender"] == "user" else "system"
-        user_message_block["content"].append({
-            "type": "text",
-            "text": f"- [{prefix} msg_id {msg['id']}] {msg['text']}"
-        })
-
-    # 🖼️ Previous images
-    if previous_images:
-        user_message_block["content"].append({
-            "type": "text",
-            "text": "\n## Previous and Current Input Images (Last ones are probably current images):\n"
-        })
-        for img in previous_images:
-            user_message_block["content"].append({
-                "type": "text",
-                "text": f"Image ID: {img['image_id']}"
-            })
-            user_message_block["content"].append({
-                "type": "image_url",
-                "image_url": {"url": img["url"]}
-            })
-
-    # ✍️ Current input
-    user_message_block["content"].append({
-        "type": "text",
-        "text": "\n## Current Input Message:"
-    })
-    user_message_block["content"].append({
-        "type": "text",
-        "text": f"- [User msg_id {current_message['id']}] {current_message['text']}"
-    })
-
-    # for img in current_images:
-    #     user_message_block["content"].append({
-    #         "type": "text",
-    #         "text": f"Image ID: {img['image_id']}"
-    #     })
-    #     user_message_block["content"].append({
-    #         "type": "image_url",
-    #         "image_url": {"url": img["url"]}
-    #     })
-
-    # 📤 Response instruction
-    user_message_block["content"].append({
-        "type": "text",
-        "text": (
-            "\n## Output Format\n"
-            "Respond ONLY in this JSON format:\n\n"
-            "{\n"
-            "  \"backend\": {\n"
-            "    \"is_diagnosed\": true or false,\n"
-            "    \"irrelevant_message_ids\": [ ... ],\n"
-            "    \"irrelevant_image_ids\": [ ... ],\n"
-            "    \"findings\": { ... },\n"
-            "    \"recommendations\": { ... }\n"
-            "  },\n"
-            "  \"user\": \"<markdown explanation for the patient>\"\n"
-            "}\n\n"
-            "Leave `findings` and `recommendations` as `null` if diagnosis isn't yet possible."
-        )
-    })
-
-    # 🧩 Add full user message block to messages list
-    messages.append(user_message_block)
-    return messages
-
-
-from typing import List, Dict, Optional
 
 
 def build_post_diagnosis_prompt(

@@ -26,7 +26,7 @@ class ChatMessage(BaseModelWithoutID):
     session = fields.ForeignKeyField("models.ChatSession", related_name="chat_messages")
     sender = fields.CharField(max_length=10)
     content = fields.TextField(null=True)
-    embedding = VectorField(vector_size=settings.EMBEDDING_DIMENSIONS)
+    embedding = VectorField(vector_size=settings.EMBEDDING_DIMENSIONS, null=True)
     is_relevant = fields.BooleanField(default=True) 
 
     class Meta:
@@ -59,6 +59,18 @@ class ChatImage(BaseModelWithoutID):
 
     class PydanticMeta:
         exclude = ("img_base64",)
+
+    
+class UserUploadedFile(BaseModelWithoutID):
+    id = fields.IntField(pk=True)
+    user = fields.ForeignKeyField("models.User", related_name="uploaded_files")
+    file_name = fields.CharField(max_length=255)
+    file_type = fields.CharField(max_length=10)
+    file_size = fields.IntField()
+    file_url = fields.TextField()
+
+    class Meta:
+        table = "uploaded_files"
 
 class Usage(BaseModelWithoutID):
     id = fields.IntField(pk=True)
