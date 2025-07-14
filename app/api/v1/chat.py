@@ -46,8 +46,9 @@ async def user_dashboard(user: User = Depends(get_current_user)):
     return {
         "total_sessions": await user.chat_sessions.all().count(),
         "total_files": await UserUploadedFile.filter(user=user).count(),
-        "total_reports":await GeneratedReport.filter(user=user).count()
+        "total_reports": await GeneratedReport.filter(user=user).count(),
     }
+
 
 @router.get("/session/{session_id}/all", response_model=list[MessageOut])
 async def chat_message(
@@ -62,6 +63,7 @@ async def chat_message(
         .prefetch_related("chat_images")
         .offset(offset)
         .limit(limit)
+        .order_by("created_at")
     )
     return await MessageOut.from_queryset(messages)
 
