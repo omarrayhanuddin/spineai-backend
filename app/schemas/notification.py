@@ -15,7 +15,7 @@ Tortoise.init_models(
 
 NotificationOut = pydantic_model_creator(
     Notification, 
-    include=["id", "message", "created_at", "type", "is_read", "session"],
+    include=["id", "message", "created_at", "type", "is_read", "session_id"],
     name="NotificationOut",
 )
 
