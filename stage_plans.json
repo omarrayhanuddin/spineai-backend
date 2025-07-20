@@ -1,8 +1,50 @@
 [
   {
-    "name": "Spine Premium",
+    "name": "0.00",
+    "description": "Premium Plan",
+    "price": 0.00,
+    "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL1",
+    "chat_mode":"basic",
+    "message_limit": 20,
+    "image_limit": 2,
+    "file_limit": 1,
+    "weekly_reminder": false,
+    "treatment_plan": false
+  },
+  {
+    "name": "9.99",
+    "description": "Premium Plan",
+    "price": 9.99,
+    "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL2",
+    "chat_mode":"basic",
+    "message_limit": 100,
+    "image_limit": 5,
+    "file_limit": 3,
+    "weekly_reminder": false,
+    "treatment_plan": false
+  },
+  {
+    "name": "39.99",
     "description": "Premium Plan",
     "price": 39.99,
-    "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL"
+    "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL3",
+    "chat_mode":"pro",
+    "message_limit": 250,
+    "image_limit": 20,
+    "file_limit": 7,
+    "weekly_reminder": true,
+    "treatment_plan": false
+  },
+  {
+    "name": "99.99",
+    "description": "Premium Plan",
+    "price": 99.99,
+    "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL4",
+    "chat_mode":"advanced",
+    "message_limit":1000000,
+    "image_limit": 35,
+    "file_limit": 20,
+    "weekly_reminder": true,
+    "treatment_plan": true
   }
 ]

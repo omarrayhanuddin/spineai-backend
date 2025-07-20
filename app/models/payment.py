@@ -8,6 +8,12 @@ class Plan(BaseModelWithoutID):
     description = fields.TextField(null=True)
     price = fields.DecimalField(max_digits=10, decimal_places=2)
     stripe_price_id = fields.CharField(max_length=255, unique=True)
+    chat_model = fields.CharField(max_length=20, null=True)
+    message_limit = fields.IntField(default=20)
+    image_limit = fields.IntField(default=2)
+    file_limit = fields.IntField(default=1)
+    weekly_reminder = fields.BooleanField(default=False)
+    treatment_plan = fields.BooleanField(default=False)
 
     class Meta:
         table = "plans"

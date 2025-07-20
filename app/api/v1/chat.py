@@ -88,7 +88,7 @@ async def session_update(
 
 @router.post("/session/create", dependencies=[Depends(check_subscription_active)])
 async def session_create(user: User = Depends(get_current_user)):
-    await user.check_free_trial_used()
+    await user.check_plan_limit()
     return await ChatSession.create(user=user)
 
 
@@ -140,7 +140,7 @@ async def send_session(
     total_usage = []
     if not message and not files:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No message or files provided")
-    await user.check_free_trial_used(files)
+    await user.check_plan_limit(files)
 
     session = await ChatSession.get_or_none(id=session_id, user=user)
     if not session:
@@ -156,12 +156,14 @@ async def send_session(
         session_id=session_id,
         sender="user",
         embedding=embedded_message,
+        is_relevant=False if session.is_diagnosed and files is None else True,
     )
     if message:
         total_usage.append(
             Usage(user=user, usage_count=1, source=session.id, usage_type="message")
         )
-    if session.is_diagnosed:
+    if session.is_diagnosed and files is None:
+        print("Entered Is diagnosed")
         similar_messages = (
             await ChatMessage.filter(session_id=session_id)
             .exclude(id=chat_message.id)
@@ -220,6 +222,7 @@ async def send_session(
             sender="system",
             content=user_markdown,
             embedding=await embed_text(user_markdown, openai_client=openai_client),
+            is_relevant=False,
         )
         data_response = {"message": user_markdown, "message_id": ai_message.id}
         if report:
@@ -232,9 +235,13 @@ async def send_session(
             )
             data_response["report_id"] = generated_report.id
         return data_response
-
+    if session.is_diagnosed and files is not None:
+        session.is_diagnosed = False
+        await session.save()
+    print("Entered Is not diagnosed")
     print("Message Embeddin Time", time.time() - umsg_st)
     file_st = time.time()
+    processed_files = []
     if files:
         if len(files) != len(s3_urls):
             raise HTTPException(
@@ -284,26 +291,45 @@ async def send_session(
 
     build_pmt_st = time.time()
 
-    prev_messages = await ChatMessage.filter(
-        session_id=session_id, is_relevant=True
-    ).order_by("id")
-    prev_images = await ChatImage.filter(
-        message__session_id=session_id, is_relevant=True
-    ).order_by("id")
+    prev_messages = (
+        await ChatMessage.filter(session_id=session_id, is_relevant=True)
+        .exclude(id=chat_message.id)
+        .order_by("id")
+    )
+    # prev_images = await ChatImage.filter(
+    #     message__session_id=session_id, is_relevant=True
+    # ).order_by("id")
 
     prev_message_data = [
         {"id": msg.id, "sender": msg.sender, "text": msg.content}
         for msg in prev_messages
     ]
-    prev_image_data = [
-        {"image_id": img.id, "url": img.img_base64} for img in prev_images
-    ]
+    current_message_data = (
+        {
+            "id": chat_message.id,
+            "sender": chat_message.sender,
+            "text": chat_message.content,
+        }
+        if chat_message.content
+        else None
+    )
+    current_image_data = [{"url": file["base64_data"]} for file in processed_files]
+    # prev_image_data = [
+    #     {"image_id": img.id, "url": img.img_base64} for img in prev_images
+    # ]
+
+    # print("Previous Message Data", prev_message_data)
+    # print("Current Message Data", current_message_data)
+    # print("Current Image Data", len(current_image_data))
 
     messages = build_spine_diagnosis_prompt(
         session_id=session_id,
         previous_messages=prev_message_data,
-        previous_images=prev_image_data,
-        current_message=prev_message_data.pop(),
+        # previous_images=prev_image_data,
+        previous_findings=session.findings or {},
+        previous_recommendations=session.recommendations or {},
+        current_images=current_image_data,
+        current_message=current_message_data,
     )
 
     print("Build Prompt Time", time.time() - build_pmt_st)
@@ -320,11 +346,14 @@ async def send_session(
         ai_response = json.loads(result)
     except Exception as e:
         raise HTTPException(500, f"AI response error: {e}")
+    print("AI Response", ai_response)
     print("OpenAI Time", time.time() - openai_st)
     final_response_st = time.time()
     backend = ai_response.get("backend", {})
     user_markdown = ai_response.get("user", "")
     if backend.get("is_diagnosed"):
+        print("Entered Diagnosed")
+        await ChatMessage.filter(session_id=session_id).update(is_relevant=False)
         await ChatSession.filter(id=session_id).update(
             findings=backend.get("findings"),
             recommendations=backend.get("recommendations"),
@@ -333,20 +362,22 @@ async def send_session(
             title=backend.get("session_title"),
         )
         await session.refresh_from_db()
-
+    if backend.get("findings"):
+        await ChatSession.filter(id=session_id).update(findings=backend.get("findings"))
     msg_ids = backend.get("irrelevant_message_ids", [])
-    img_ids = backend.get("irrelevant_image_ids", [])
+    # img_ids = backend.get("irrelevant_image_ids", [])
 
     if msg_ids:
         await ChatMessage.filter(id__in=msg_ids).update(is_relevant=False)
-    if img_ids:
-        await ChatImage.filter(id__in=img_ids).update(is_relevant=False)
+    # if img_ids:
+    #     await ChatImage.filter(id__in=img_ids).update(is_relevant=False)
 
     ai_chat = await ChatMessage.create(
         session_id=session_id,
         sender="system",
         content=user_markdown,
         embedding=await embed_text(user_markdown, openai_client=openai_client),
+        is_relevant=False if session.is_diagnosed else True,
     )
     data_response = {
         "message": user_markdown,

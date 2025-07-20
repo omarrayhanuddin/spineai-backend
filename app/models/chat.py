@@ -27,7 +27,8 @@ class ChatMessage(BaseModelWithoutID):
     sender = fields.CharField(max_length=10)
     content = fields.TextField(null=True)
     embedding = VectorField(vector_size=settings.EMBEDDING_DIMENSIONS, null=True)
-    is_relevant = fields.BooleanField(default=True) 
+    is_relevant = fields.BooleanField(default=True)
+     
 
     class Meta:
         table = "messages"
