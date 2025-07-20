@@ -16,9 +16,9 @@ router = APIRouter(prefix="/v1/admin", tags=["Admin Endpoints"])
 @router.post("/send-recommendations-notification")
 async def send_recommendations_notification_endpoint(
     current_admin: dict = Depends(get_current_admin),
-    funtion_only=False
+    function_only:bool=False
 ):
-    if funtion_only:
+    if function_only:
         await async_db_operation_for_recommendations_notify()
         return {"message": "Function only."}
     send_recommendations_notification.delay()
@@ -29,9 +29,9 @@ async def send_recommendations_notification_endpoint(
 @router.post("/create-treatment-plan-from-ai-response")
 async def create_treatment_plan_from_ai_response_endpoint(
     current_admin: dict = Depends(get_current_admin),
-    funtion_only=False
+    function_only:bool=False
 ):
-    if funtion_only:
+    if function_only:
         await async_db_operation_for_treatment_plan()
         return {"message": "Function only."}
     create_treatment_plan_from_ai_response.delay()
@@ -42,10 +42,13 @@ async def create_treatment_plan_from_ai_response_endpoint(
 @router.post("/send-daily-treatment-notification")
 async def send_daily_treatment_notification_endpoint(
     current_admin: dict = Depends(get_current_admin),
-    funtion_only=False
+    function_only:bool=False
 ):
-    if funtion_only:
+    print("1")
+    if function_only:
+        print("2")
         await async_db_operation_for_treatment_notify()
         return {"message": "Daily treatment notification task queued."}
+    print("3")
     send_daily_treatment_notification.delay()
     return {"message": "Daily treatment notification task queued."}
