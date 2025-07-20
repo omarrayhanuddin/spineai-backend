@@ -162,7 +162,6 @@ def send_daily_treatment_notification():
         return loop.run_until_complete(async_db_operation_for_treatment_notify())
 
 
-@app.task
 async def async_db_operation_for_treatment_plan():
     try:
         await Tortoise.init(config=TORTOISE_ORM)
@@ -223,6 +222,7 @@ async def async_db_operation_for_treatment_plan():
         await Tortoise.close_connections()
 
 
+@app.task
 def create_treatment_plan_from_ai_response():
     """
     Celery task to parse an AI response (JSON) and create a treatment plan
