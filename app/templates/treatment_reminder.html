@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Your SpineAi Plan for Today!</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            background-color: #ffffff;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .task-list {
+            list-style-type: none;
+            padding: 0;
+            margin-top: 15px;
+        }
+        .task-list li {
+            background-color: #e9f7ef; /* Light green background for tasks */
+            margin-bottom: 10px;
+            padding: 10px 15px;
+            border-left: 5px solid #4CAF50;
+            border-radius: 4px;
+        }
+        .task-title {
+            font-weight: bold;
+            color: #333333;
+        }
+        .task-description {
+            font-size: 0.9em;
+            color: #555555;
+            margin-top: 5px;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 24px;
+            margin-top: 20px;
+            background-color: #4CAF50; /* Green button */
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #888888;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Hello {{ user_name }},</h2>
+        <p>Here's a quick look at your personalized treatment plan tasks for today, <strong>{{ today_date }}</strong>:</p>
+
+        {% if tasks %}
+            <ul class="task-list">
+                {% for task in tasks %}
+                    <li>
+                        <div class="task-title">{{ task.title }}</div>
+                        <div class="task-description">{{ task.description }}</div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>You have no specific tasks scheduled for today. Take this opportunity to review your overall progress or engage in some light, approved activities!</p>
+        {% endif %}
+        
+        <p>Remember to mark your tasks as complete in your dashboard.</p>
+        <a href="{{ link }}" class="button" style="color: #ffffff; text-decoration: none;">View Full Plan</a>
+        <p>We're here to support you on your journey to better spinal health!</p>
+        <div class="footer">
+            &copy; {{ current_year }} SpineAi. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>

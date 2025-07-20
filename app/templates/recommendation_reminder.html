@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Reminder: Stay on Track with Your Recommendations!</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            background-color: #ffffff;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 24px;
+            margin-top: 20px;
+            background-color: #4CAF50; /* Green button */
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #888888;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Hello {{ user_name }},</h2>
+        <p>{{body}}</p>
+        <a href="{{ link }}" class="button" style="color: #ffffff; text-decoration: none;">See Recommendations</a>
+        <p>If you have any questions or need further assistance, don't hesitate to reach out to our support team.</p>
+        <div class="footer">
+            &copy; {{ current_year }} SpineAi. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>

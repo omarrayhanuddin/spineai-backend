@@ -9,7 +9,7 @@ MODEL_SIZE = "tiny"
 model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
 
 
-@router.post("/transcribe1", dependencies=[Depends(get_current_user)])
+@router.post("/transcribe", dependencies=[Depends(get_current_user)])
 async def transcribe_audio(file: UploadFile = File(...)):
     try:
         # Transcribe audio using Whisper

@@ -20,8 +20,20 @@ def create_celery():
         enable_utc=True,
         # Celery Beat schedule
         beat_schedule={
-            'send-recommendations-notification-hourly': {
+            'send-recommendations-notification-once-a-day': {
                 'task': 'app.tasks.chat.send_recommendations_notification',
+                'schedule': crontab(hour='10,14', minute=0),
+                # 'schedule': crontab(minute=0),
+                # 'schedule': timedelta(seconds=5),
+            },
+            'send-treatment-notification-once-a-day': {
+                'task': 'app.tasks.chat.send_recommendations_notification',
+                'schedule': crontab(hour='10,14', minute=0),
+                # 'schedule': crontab(minute=0),
+                # 'schedule': timedelta(seconds=5),
+            },
+            'create-treatment-plan-end-of-day': {
+                'task': 'app.tasks.chat.create_treatment_plan_from_ai_response',
                 'schedule': crontab(hour='10,14', minute=0),
                 # 'schedule': crontab(minute=0),
                 # 'schedule': timedelta(seconds=5),

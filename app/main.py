@@ -1,7 +1,7 @@
 from tortoise import Tortoise
 from fastapi import FastAPI
 from app.db.config import init_db
-from app.api.v1 import user, chat, payment, notification, transcribe
+from app.api.v1 import user, chat, payment, notification, transcribe, treatment_plan, admin
 from contextlib import asynccontextmanager
 from httpx import AsyncClient as HttpxAsyncClient
 from app.core.config import settings
@@ -116,7 +116,7 @@ async def setup_pgvector_hnsw():
 
 async def update_user_plan():
     from app.models.user import User
-    await User.all().update(current_plan="price_1Rj0RVFjPe0daNEdsVAfoJsL4")
+    await User.all().update(current_plan="price_1Rn2npFjPe0daNEdBtVYGnAR")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -127,7 +127,7 @@ async def lifespan(app: FastAPI):
         # await run_aerich_upgrade()
         await setup_pgvector_hnsw()
         await create_or_update_plans_from_file()
-        await update_user_plan()
+        # await update_user_plan()
 
         app.state.openai_client = OpenAiAsyncClient(api_key=settings.OPENAI_API_KEY)
         app.state.httpx_client = HttpxAsyncClient()
@@ -166,5 +166,7 @@ app.include_router(chat.router)
 app.include_router(payment.router)
 app.include_router(notification.router)
 app.include_router(transcribe.router)
+app.include_router(treatment_plan.router)
+app.include_router(admin.router)
 # app.include_router(feedback.router)
 logger.info("API routers included: user, chat, payment, feedback.")

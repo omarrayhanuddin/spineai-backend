@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     )
     CELERY_BROKER_URL: str = Field(default="redis://localhost:6379/0", env="CELERY_BROKER_URL")
     CELERY_RESULT_BACKEND: str = Field(default="redis://localhost:6379/0", env="CELERY_RESULT_BACKEND")
+    TREATMENT_PLAN_PRICE_ID: str | None = Field(default="price_1Rj0RVFjPe0daNEdsVAfoJsL4", env="TREATMENT_PLAN_PRICE_ID")
 
 
     model_config = SettingsConfigDict(
