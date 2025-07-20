@@ -5,7 +5,8 @@ from app.tasks.chat import (
     create_treatment_plan_from_ai_response,
     send_daily_treatment_notification,
     async_db_operation_for_treatment_notify,
-    async_db_operation_for_recommendations_notify
+    async_db_operation_for_recommendations_notify,
+    async_db_operation_for_treatment_plan,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["Admin Endpoints"])
@@ -30,6 +31,9 @@ async def create_treatment_plan_from_ai_response_endpoint(
     current_admin: dict = Depends(get_current_admin),
     funtion_only=False
 ):
+    if funtion_only:
+        await async_db_operation_for_treatment_plan()
+        return {"message": "Function only."}
     create_treatment_plan_from_ai_response.delay()
     return {"message": "Treatment plan creation task queued."}
 

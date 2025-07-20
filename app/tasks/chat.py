@@ -163,6 +163,66 @@ def send_daily_treatment_notification():
 
 
 @app.task
+async def async_db_operation_for_treatment_plan():
+    try:
+        await Tortoise.init(config=TORTOISE_ORM)
+        await Tortoise.generate_schemas()
+        print("Tortoise initialized")
+        openai_client = AsyncClient(api_key=settings.OPENAI_API_KEY)
+        treatment_sessions = await ChatSession.filter(
+            is_diagnosed=True,
+            user__current_plan=settings.TREATMENT_PLAN_PRICE_ID,
+            findings__isnull=False,
+            treatment_plans__isnull=True,
+        )
+        print("Found {} treatment sessions".format(len(treatment_sessions)))
+
+        for session in treatment_sessions:
+            message = generate_treatment_plan_prompt(
+                findings=session.findings,
+                recommendations=session.recommendations,
+                date=datetime.now().strftime("%Y-%m-%d"),
+            )
+            response = await openai_client.chat.completions.create(
+                model="gpt-4.1-2025-04-14",
+                messages=message,
+                temperature=0.2,
+                response_format={"type": "json_object"},
+            )
+            result = response.choices[0].message.content
+            treatment_data = json.loads(result)
+            for category_name, weekly_plans_data in treatment_data["treatment"].items():
+                treatment_category, _ = await TreatmentCategory.get_or_create(
+                    name=category_name, session=session
+                )
+                for weekly_plan_data in weekly_plans_data:
+                    weekly_plan, _ = await WeeklyPlan.get_or_create(
+                        name=weekly_plan_data["name"],
+                        category=treatment_category,
+                        defaults={
+                            "description": weekly_plan_data["description"],
+                            "start_date": date.fromisoformat(
+                                weekly_plan_data["startDate"]
+                            ),
+                            "end_date": date.fromisoformat(weekly_plan_data["endDate"]),
+                        },
+                    )
+                    for task_data in weekly_plan_data["task"]:
+                        await Task.get_or_create(
+                            title=task_data["title"],
+                            date=date.fromisoformat(task_data["date"]),
+                            weekly_plan=weekly_plan,
+                            defaults={
+                                "description": task_data["description"],
+                                "status": task_data["status"],
+                            },
+                        )
+    except Exception as e:
+        print(f"Error processing AI response: {e}")
+    finally:
+        await Tortoise.close_connections()
+
+
 def create_treatment_plan_from_ai_response():
     """
     Celery task to parse an AI response (JSON) and create a treatment plan
@@ -173,72 +233,9 @@ def create_treatment_plan_from_ai_response():
         the "treatment" structure.
     """
 
-    async def async_db_operation():
-        try:
-            await Tortoise.init(config=TORTOISE_ORM)
-            await Tortoise.generate_schemas()
-            print("Tortoise initialized")
-            openai_client = AsyncClient(api_key=settings.OPENAI_API_KEY)
-            treatment_sessions = await ChatSession.filter(
-                is_diagnosed=True,
-                user__current_plan=settings.TREATMENT_PLAN_PRICE_ID,
-                findings__isnull=False,
-                treatment_plans__isnull=True,
-            )
-            print("Found {} treatment sessions".format(len(treatment_sessions)))
-
-            for session in treatment_sessions:
-                message = generate_treatment_plan_prompt(
-                    findings=session.findings,
-                    recommendations=session.recommendations,
-                    date=datetime.now().strftime("%Y-%m-%d"),
-                )
-                response = await openai_client.chat.completions.create(
-                    model="gpt-4.1-2025-04-14",
-                    messages=message,
-                    temperature=0.2,
-                    response_format={"type": "json_object"},
-                )
-                result = response.choices[0].message.content
-                treatment_data = json.loads(result)
-                for category_name, weekly_plans_data in treatment_data[
-                    "treatment"
-                ].items():
-                    treatment_category, _ = await TreatmentCategory.get_or_create(
-                        name=category_name, session=session
-                    )
-                    for weekly_plan_data in weekly_plans_data:
-                        weekly_plan, _ = await WeeklyPlan.get_or_create(
-                            name=weekly_plan_data["name"],
-                            category=treatment_category,
-                            defaults={
-                                "description": weekly_plan_data["description"],
-                                "start_date": date.fromisoformat(
-                                    weekly_plan_data["startDate"]
-                                ),
-                                "end_date": date.fromisoformat(
-                                    weekly_plan_data["endDate"]
-                                ),
-                            },
-                        )
-                        for task_data in weekly_plan_data["task"]:
-                            await Task.get_or_create(
-                                title=task_data["title"],
-                                date=date.fromisoformat(task_data["date"]),
-                                weekly_plan=weekly_plan,
-                                defaults={
-                                    "description": task_data["description"],
-                                    "status": task_data["status"],
-                                },
-                            )
-        except Exception as e:
-            print(f"Error processing AI response: {e}")
-        finally:
-            await Tortoise.close_connections()
-
     # Run the async operation in the current event loop
     loop = asyncio.get_event_loop()
     if loop.is_running():
-        return loop.create_task(async_db_operation()).result()
+        return loop.create_task(async_db_operation_for_treatment_plan()).result()
     else:
-        return loop.run_until_complete(async_db_operation())
+        return loop.run_until_complete(async_db_operation_for_treatment_plan())

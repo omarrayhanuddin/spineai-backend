@@ -53,3 +53,13 @@ async def get_tasks_for_weekly_plan(
         raise HTTPException(status_code=404, detail="Weekly plan not found")
     tasks = await Task.filter(weekly_plan=weekly_plan)
     return tasks
+
+
+@router.post('/task/{task_id}/complete', response_model=TaskOut)
+async def complete_task(task_id: int, user=Depends(get_current_user)):
+    task = await Task.get_or_none(id=task_id, weekly_plan__category__session__user=user)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task.status = "completed"
+    await task.save()
+    return task
