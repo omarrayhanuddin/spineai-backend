@@ -23,9 +23,9 @@ def create_celery():
         beat_schedule={
             'send-recommendations-notification-once-a-day': {
                 'task': 'app.tasks.chat.send_recommendations_notification',
-                # 'schedule': crontab(hour='14', minute=0),
+                'schedule': crontab(hour='14', minute=0),
                 # 'schedule': crontab(minute=0),
-                'schedule': timedelta(seconds=5),
+                # 'schedule': timedelta(seconds=5),
             },
             'send-treatment-notification-once-a-day': {
                 'task': 'app.tasks.chat.send_daily_treatment_notification',
