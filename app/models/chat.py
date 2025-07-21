@@ -9,6 +9,7 @@ class ChatSession(BaseModelWithoutID):
     user = fields.ForeignKeyField("models.User", related_name="chat_sessions")
     title = fields.TextField(null=True)
     findings = fields.JSONField(null=True)
+    detected_region = fields.CharField(max_length=255, null=True)
     recommendations = fields.JSONField(null=True)
     recommendations_notified_at = fields.DatetimeField(null=True)
     is_diagnosed = fields.BooleanField(default=False)

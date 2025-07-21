@@ -330,6 +330,7 @@ async def send_session(
         previous_recommendations=session.recommendations or {},
         current_images=current_image_data,
         current_message=current_message_data,
+        target_region=session.detected_region
     )
 
     print("Build Prompt Time", time.time() - build_pmt_st)
@@ -364,6 +365,10 @@ async def send_session(
         await session.refresh_from_db()
     if backend.get("findings"):
         await ChatSession.filter(id=session_id).update(findings=backend.get("findings"))
+    if backend.get("detected_region"):
+        await ChatSession.filter(id=session_id).update(
+            detected_region=backend.get("detected_region")
+        )
     msg_ids = backend.get("irrelevant_message_ids", [])
     # img_ids = backend.get("irrelevant_image_ids", [])
 
@@ -386,6 +391,8 @@ async def send_session(
     }
     if session.title:
         data_response["session_title"] = session.title
+    if backend.get("prompt_new_session"):
+        data_response["new_session_prompt"] = backend.get("prompt_new_session")
     print("Final Response Time", time.time() - final_response_st)
     return data_response
 

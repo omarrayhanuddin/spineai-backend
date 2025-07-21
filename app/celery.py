@@ -1,6 +1,7 @@
 from celery import Celery
 from celery.schedules import crontab
 from app.core.config import settings
+from datetime import timedelta
 # from datetime import timedelta # Import timedelta
 
 def create_celery():
@@ -22,21 +23,21 @@ def create_celery():
         beat_schedule={
             'send-recommendations-notification-once-a-day': {
                 'task': 'app.tasks.chat.send_recommendations_notification',
-                'schedule': crontab(hour='10,14', minute=0),
+                # 'schedule': crontab(hour='14', minute=0),
                 # 'schedule': crontab(minute=0),
-                # 'schedule': timedelta(seconds=5),
+                'schedule': timedelta(seconds=5),
             },
             'send-treatment-notification-once-a-day': {
-                'task': 'app.tasks.chat.send_recommendations_notification',
-                'schedule': crontab(hour='10,14', minute=0),
+                'task': 'app.tasks.chat.send_daily_treatment_notification',
+                'schedule': crontab(hour='12', minute=0),
                 # 'schedule': crontab(minute=0),
-                # 'schedule': timedelta(seconds=5),
+                # 'schedule': timedelta(seconds=15),
             },
             'create-treatment-plan-end-of-day': {
                 'task': 'app.tasks.chat.create_treatment_plan_from_ai_response',
-                'schedule': crontab(hour='10,14', minute=0),
+                'schedule': crontab(hour='22', minute=0),
                 # 'schedule': crontab(minute=0),
-                # 'schedule': timedelta(seconds=5),
+                # 'schedule': timedelta(seconds=20),
             },
         }
     )

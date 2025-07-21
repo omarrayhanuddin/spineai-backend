@@ -40,7 +40,40 @@ TREATMENT_PLAN_NOTIFICATION_TITLES = [
 
 
 # Send recommendations notification to users every 7th day from the date of recommendations_notified_at
+async def async_send_email_recoommendations_notification_per_session(session_id):
+    print("Session ID Received for recommendation notify:", session_id)
+    await Tortoise.init(config=TORTOISE_ORM)
+    await Tortoise.generate_schemas()
+    try:
+        session = await ChatSession.get_or_none(id=session_id).select_related("user")
+        if not session:
+            raise ValueError("Session not found")
+        # Randomly select a message from the REMINDER_MESSAGES list
+        random_message = random.choice(REMINDER_MESSAGES)
+        await Notification.create(
+            user=session.user,
+            message=random_message,
+            type="recommendations_reminder",
+            session=session,
+        )
+        context = {
+            "user_name": session.user.full_name,
+            "body": random_message,
+            "link": f"{settings.SITE_DOMIN}/dashboard/chat/{session.id}",
+        }
+        await send_email(
+            recipient=session.user.email,
+            subject=f"Online Spine Health: {random_message}",
+            context=context,
+            template_name="recommendation_reminder.html",
+        )
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return {"status": "error", "error": str(e)}
+
+
 async def async_db_operation_for_recommendations_notify():
+    print("async_db_operation_for_recommendations_notify")
     await Tortoise.init(config=TORTOISE_ORM)
     await Tortoise.generate_schemas()
     try:
@@ -51,32 +84,11 @@ async def async_db_operation_for_recommendations_notify():
             recommendations_notified_at__isnull=False,
             user__current_plan__isnull=False,
         ).select_related("user")
+        print("older_sessions", older_sessions)
         older_sessions_ids = []
         for session in older_sessions:
-            try:
-                # Randomly select a message from the REMINDER_MESSAGES list
-                random_message = random.choice(REMINDER_MESSAGES)
-                await Notification.create(
-                    user=session.user,
-                    message=random_message,
-                    type="recommendations_reminder",
-                    session=session,
-                )
-                context = {
-                    "user_name": session.user.full_name,
-                    "body": random_message,
-                    "link": f"{settings.SITE_DOMIN}/dashboard/chat/{session.id}",
-                }
-                await send_email(
-                    recipient=session.user.email,
-                    subject=f"Online Spine Health: {random_message}",
-                    context=context,
-                    template_name="recommendation_reminder.html",
-                )
-                older_sessions_ids.append(session.id)
-            except Exception as e:
-                print(f"Error creating notification for session {session.id}: {e}")
-                continue
+            send_recommendations_notification_delay.delay(session.id)
+            older_sessions_ids.append(session.id)
         if older_sessions_ids:
             try:
                 await ChatSession.filter(id__in=older_sessions_ids).update(
@@ -97,20 +109,8 @@ async def async_db_operation_for_recommendations_notify():
         await Tortoise.close_connections()
 
 
-@app.task
-def send_recommendations_notification():
-
-    # Run the async operation in the current event loop to avoid issues with Celery
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        return loop.create_task(
-            async_db_operation_for_recommendations_notify()
-        ).result()
-    else:
-        return loop.run_until_complete(async_db_operation_for_recommendations_notify())
-
-
 async def async_db_operation_for_treatment_notify():
+    print("async_db_operation_for_treatment_notify")
     # await Tortoise.init(config=TORTOISE_ORM)
     # await Tortoise.generate_schemas()
     try:
@@ -151,23 +151,63 @@ async def async_db_operation_for_treatment_notify():
         await Tortoise.close_connections()
 
 
-@app.task
-def send_daily_treatment_notification():
-
-    # Run the async operation in the current event loop to avoid issues with Celery
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        return loop.create_task(async_db_operation_for_treatment_notify()).result()
-    else:
-        return loop.run_until_complete(async_db_operation_for_treatment_notify())
+async def async_db_treatment_per_session(session_id):
+    print("Session ID:", session_id)
+    await Tortoise.init(config=TORTOISE_ORM)
+    await Tortoise.generate_schemas()
+    openai_client = AsyncClient(api_key=settings.OPENAI_API_KEY)
+    try:
+        session = await ChatSession.get_or_none(id=session_id)
+        if not session:
+            raise ValueError("Session not found")
+        message = generate_treatment_plan_prompt(
+            findings=session.findings,
+            recommendations=session.recommendations,
+            date=datetime.now().strftime("%Y-%m-%d"),
+        )
+        response = await openai_client.chat.completions.create(
+            model="gpt-4.1-2025-04-14",
+            messages=message,
+            temperature=0.2,
+            response_format={"type": "json_object"},
+        )
+        result = response.choices[0].message.content
+        treatment_data = json.loads(result)
+        for category_name, weekly_plans_data in treatment_data["treatment"].items():
+            treatment_category, _ = await TreatmentCategory.get_or_create(
+                name=category_name, session=session
+            )
+            for weekly_plan_data in weekly_plans_data:
+                weekly_plan, _ = await WeeklyPlan.get_or_create(
+                    name=weekly_plan_data["name"],
+                    category=treatment_category,
+                    defaults={
+                        "description": weekly_plan_data["description"],
+                        "start_date": date.fromisoformat(weekly_plan_data["startDate"]),
+                        "end_date": date.fromisoformat(weekly_plan_data["endDate"]),
+                    },
+                )
+                for task_data in weekly_plan_data["task"]:
+                    await Task.get_or_create(
+                        title=task_data["title"],
+                        date=date.fromisoformat(task_data["date"]),
+                        weekly_plan=weekly_plan,
+                        defaults={
+                            "description": task_data["description"],
+                            "status": task_data["status"],
+                        },
+                    )
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return {"status": "error", "error": str(e)}
 
 
 async def async_db_operation_for_treatment_plan():
+    print("async_db_operation_for_treatment_plan")
     try:
         await Tortoise.init(config=TORTOISE_ORM)
         await Tortoise.generate_schemas()
         print("Tortoise initialized")
-        openai_client = AsyncClient(api_key=settings.OPENAI_API_KEY)
         treatment_sessions = await ChatSession.filter(
             is_diagnosed=True,
             user__current_plan=settings.TREATMENT_PLAN_PRICE_ID,
@@ -177,45 +217,7 @@ async def async_db_operation_for_treatment_plan():
         print("Found {} treatment sessions".format(len(treatment_sessions)))
 
         for session in treatment_sessions:
-            message = generate_treatment_plan_prompt(
-                findings=session.findings,
-                recommendations=session.recommendations,
-                date=datetime.now().strftime("%Y-%m-%d"),
-            )
-            response = await openai_client.chat.completions.create(
-                model="gpt-4.1-2025-04-14",
-                messages=message,
-                temperature=0.2,
-                response_format={"type": "json_object"},
-            )
-            result = response.choices[0].message.content
-            treatment_data = json.loads(result)
-            for category_name, weekly_plans_data in treatment_data["treatment"].items():
-                treatment_category, _ = await TreatmentCategory.get_or_create(
-                    name=category_name, session=session
-                )
-                for weekly_plan_data in weekly_plans_data:
-                    weekly_plan, _ = await WeeklyPlan.get_or_create(
-                        name=weekly_plan_data["name"],
-                        category=treatment_category,
-                        defaults={
-                            "description": weekly_plan_data["description"],
-                            "start_date": date.fromisoformat(
-                                weekly_plan_data["startDate"]
-                            ),
-                            "end_date": date.fromisoformat(weekly_plan_data["endDate"]),
-                        },
-                    )
-                    for task_data in weekly_plan_data["task"]:
-                        await Task.get_or_create(
-                            title=task_data["title"],
-                            date=date.fromisoformat(task_data["date"]),
-                            weekly_plan=weekly_plan,
-                            defaults={
-                                "description": task_data["description"],
-                                "status": task_data["status"],
-                            },
-                        )
+            create_treatment_per_session.delay(session.id)
     except Exception as e:
         print(f"Error processing AI response: {e}")
     finally:
@@ -223,19 +225,51 @@ async def async_db_operation_for_treatment_plan():
 
 
 @app.task
+def send_daily_treatment_notification():
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        return loop.create_task(async_db_operation_for_treatment_notify()).result()
+    else:
+        return loop.run_until_complete(async_db_operation_for_treatment_notify())
+
+
+@app.task
+def send_recommendations_notification():
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        return loop.create_task(
+            async_db_operation_for_recommendations_notify()
+        ).result()
+    else:
+        return loop.run_until_complete(async_db_operation_for_recommendations_notify())
+
+
+@app.task
 def create_treatment_plan_from_ai_response():
-    """
-    Celery task to parse an AI response (JSON) and create a treatment plan
-    in the database.
-
-    Args:
-        ai_response_json (dict): The JSON response from the AI containing
-        the "treatment" structure.
-    """
-
-    # Run the async operation in the current event loop
     loop = asyncio.get_event_loop()
     if loop.is_running():
         return loop.create_task(async_db_operation_for_treatment_plan()).result()
     else:
         return loop.run_until_complete(async_db_operation_for_treatment_plan())
+
+
+@app.task
+def create_treatment_per_session(session_id):
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        return loop.create_task(async_db_treatment_per_session(session_id)).result()
+    else:
+        return loop.run_until_complete(async_db_treatment_per_session(session_id))
+
+
+@app.task
+def send_recommendations_notification_delay(session_id):
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        return loop.create_task(
+            async_send_email_recoommendations_notification_per_session(session_id)
+        ).result()
+    else:
+        return loop.run_until_complete(
+            async_send_email_recoommendations_notification_per_session(session_id)
+        )

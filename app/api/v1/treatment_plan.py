@@ -15,9 +15,9 @@ async def get_all_treatment_categories(
         return {
             "categories": await TreatmentCategory.filter(
                 session__id=session_id, session__user=user
-            )
+            ).order_by("id")
         }
-    return {"categories": await TreatmentCategory.filter(session__user=user)}
+    return {"categories": await TreatmentCategory.filter(session__user=user).order_by("id")}
 
 
 @router.get("/category/{category_id}/weekly-plans", response_model=list[WeeklyPlanOut])
@@ -31,13 +31,15 @@ async def get_weekly_plans_for_category(
         weekly_plans = (
             WeeklyPlan.filter(category=category, tasks__date=filter_date)
             .prefetch_related("tasks")
-            .order_by("tasks__id")
+            .order_by("id")
+            .distinct()
         )
     else:
         weekly_plans = (
             WeeklyPlan.filter(category=category)
             .prefetch_related("tasks")
-            .order_by("tasks__id")
+            .order_by("id")
+            .distinct()
         )
     return await WeeklyPlanOut.from_queryset(weekly_plans)
 
@@ -51,7 +53,7 @@ async def get_tasks_for_weekly_plan(
     )
     if not weekly_plan:
         raise HTTPException(status_code=404, detail="Weekly plan not found")
-    tasks = await Task.filter(weekly_plan=weekly_plan)
+    tasks = await Task.filter(weekly_plan=weekly_plan).order_by("id")
     return tasks
 
 
