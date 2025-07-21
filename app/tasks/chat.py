@@ -70,6 +70,8 @@ async def async_send_email_recoommendations_notification_per_session(session_id)
     except Exception as e:
         print(f"Unexpected error: {e}")
         return {"status": "error", "error": str(e)}
+    finally:
+        await Tortoise.close_connections()
 
 
 async def async_db_operation_for_recommendations_notify():
@@ -84,7 +86,7 @@ async def async_db_operation_for_recommendations_notify():
             recommendations_notified_at__isnull=False,
             user__current_plan__isnull=False,
         ).select_related("user")
-        print("older_sessions", older_sessions)
+        # print("older_sessions", older_sessions)
         older_sessions_ids = []
         for session in older_sessions:
             send_recommendations_notification_delay.delay(session.id)
@@ -200,6 +202,8 @@ async def async_db_treatment_per_session(session_id):
     except Exception as e:
         print(f"Unexpected error: {e}")
         return {"status": "error", "error": str(e)}
+    finally:
+        await Tortoise.close_connections()
 
 
 async def async_db_operation_for_treatment_plan():

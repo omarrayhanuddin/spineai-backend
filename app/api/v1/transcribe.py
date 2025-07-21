@@ -13,7 +13,7 @@ model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
 async def transcribe_audio(file: UploadFile = File(...)):
     try:
         # Transcribe audio using Whisper
-        segments, info = model.transcribe(file.file, task="transcribe")
+        segments, info = model.transcribe(file.file, task="transcribe", language="en")
         transcription_result = "".join(segment.text for segment in segments)
         return {"text": transcription_result}
     except Exception as e:

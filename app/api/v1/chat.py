@@ -6,6 +6,7 @@ from app.api.dependency import (
     get_openai_client,
     check_subscription_active,
 )
+from app.tasks.chat import create_treatment_per_session
 from app.models.user import User
 from app.models.chat import (
     ChatSession,
@@ -129,7 +130,7 @@ import time
 @router.post(
     "/session/{session_id}/send", dependencies=[Depends(check_subscription_active)]
 )
-async def send_session(
+async def send_session_v2(
     session_id: str,
     message: str = Form(None),
     files: list[UploadFile] = None,
@@ -296,9 +297,6 @@ async def send_session(
         .exclude(id=chat_message.id)
         .order_by("id")
     )
-    # prev_images = await ChatImage.filter(
-    #     message__session_id=session_id, is_relevant=True
-    # ).order_by("id")
 
     prev_message_data = [
         {"id": msg.id, "sender": msg.sender, "text": msg.content}
@@ -314,23 +312,13 @@ async def send_session(
         else None
     )
     current_image_data = [{"url": file["base64_data"]} for file in processed_files]
-    # prev_image_data = [
-    #     {"image_id": img.id, "url": img.img_base64} for img in prev_images
-    # ]
 
-    # print("Previous Message Data", prev_message_data)
-    # print("Current Message Data", current_message_data)
-    # print("Current Image Data", len(current_image_data))
-
+    print("Image Summary", session.image_summary)
     messages = build_spine_diagnosis_prompt(
-        session_id=session_id,
         previous_messages=prev_message_data,
-        # previous_images=prev_image_data,
-        previous_findings=session.findings or {},
-        previous_recommendations=session.recommendations or {},
-        current_images=current_image_data,
+        new_images=current_image_data,
         current_message=current_message_data,
-        target_region=session.detected_region
+        images_summary=session.image_summary or {},
     )
 
     print("Build Prompt Time", time.time() - build_pmt_st)
@@ -363,19 +351,18 @@ async def send_session(
             title=backend.get("session_title"),
         )
         await session.refresh_from_db()
-    if backend.get("findings"):
-        await ChatSession.filter(id=session_id).update(findings=backend.get("findings"))
-    if backend.get("detected_region"):
+        await session.treatment_plans.all().delete()
+        create_treatment_per_session.delay(session_id)
+    else:
+        await ChatSession.filter(id=session_id).update(is_diagnosed=False)
+    if backend.get("images_summary") and not backend.get("multiple_region_detected"):
         await ChatSession.filter(id=session_id).update(
-            detected_region=backend.get("detected_region")
+            image_summary=backend.get("images_summary")
         )
     msg_ids = backend.get("irrelevant_message_ids", [])
-    # img_ids = backend.get("irrelevant_image_ids", [])
 
     if msg_ids:
         await ChatMessage.filter(id__in=msg_ids).update(is_relevant=False)
-    # if img_ids:
-    #     await ChatImage.filter(id__in=img_ids).update(is_relevant=False)
 
     ai_chat = await ChatMessage.create(
         session_id=session_id,

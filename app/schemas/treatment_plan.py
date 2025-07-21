@@ -11,5 +11,5 @@ WeeklyPlanOut = pydantic_model_creator(
     include=("id", "name", "description", "start_date", "end_date", "tasks"),
 )
 TaskOut = pydantic_model_creator(
-    Task, name="TaskOut", include=("id", "title", "description", "status")
+    Task, name="TaskOut", include=("id", "title", "description", "status", "date")
 )
