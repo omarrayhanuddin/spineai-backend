@@ -4,6 +4,7 @@ from pydantic import Field, EmailStr
 
 
 class Settings(BaseSettings):
+    EMBEDDING_DIMENSIONS: int = Field(default=1536)
     APP_ENV: str = Field(default="stage", env="APP_ENV")
     STRIPE_API_KEY: str = Field(default=None, env="STRIPE_API_KEY")
     STRIPE_WEBHOOK_SECRET: str = Field(default=None, env="STRIPE_WEBHOOK_SECRET")
@@ -37,6 +38,10 @@ class Settings(BaseSettings):
     FROM_EMAIL: EmailStr = Field(
         default_factory=lambda: os.getenv("SMTP_USER", ""), env="FROM_EMAIL"
     )
+    CELERY_BROKER_URL: str = Field(default="redis://localhost:6379/0", env="CELERY_BROKER_URL")
+    CELERY_RESULT_BACKEND: str = Field(default="redis://localhost:6379/0", env="CELERY_RESULT_BACKEND")
+    TREATMENT_PLAN_PRICE_ID: str | None = Field(default="price_1Rj0RVFjPe0daNEdsVAfoJsL", env="TREATMENT_PLAN_PRICE_ID")
+
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"

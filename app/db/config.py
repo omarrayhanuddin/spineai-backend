@@ -8,8 +8,10 @@ TORTOISE_ORM = {
         "models": {
             "models": [
                 "app.models.user",
-                # "app.models.chat",
+                "app.models.chat",
                 "app.models.payment",
+                "app.models.notification",
+                "app.models.treatment_plan",
                 # "app.models.feedback",
                 "aerich.models",
             ],

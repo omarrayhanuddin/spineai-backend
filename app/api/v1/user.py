@@ -8,6 +8,7 @@ from app.schemas.users import (
     ForgotPassword,
     ChangePassword,
     UpdateProfile,
+    UserSettings,
 )
 from app.services.email_service import send_email
 from app.models.user import User
@@ -38,7 +39,7 @@ async def register(user: UserCreate, background_tasks: BackgroundTasks):
 
     background_tasks.add_task(
         send_email,
-        subject="Action Required: Verify Your Email on FinDocAi",
+        subject="Action Required: Verify Your Email on SpineAi",
         recipient=user.email,
         template_name="email_verify.html",
         context=context,
@@ -63,7 +64,7 @@ async def resend_verification_email(
 
     background_tasks.add_task(
         send_email,
-        subject="Action Required: Verify Your Email on FinDocAi",
+        subject="Action Required: Verify Your Email on SpineAi",
         recipient=user.email,
         template_name="email_verify.html",
         context=context,
@@ -143,7 +144,7 @@ async def forgot_password(form: ForgotPassword, background_tasks: BackgroundTask
 
     background_tasks.add_task(
         send_email,
-        subject="FinDocAi Password Reset Request",
+        subject="SpineAi Password Reset Request",
         recipient=user.email,
         template_name="reset_password.html",
         context=context,
@@ -153,7 +154,6 @@ async def forgot_password(form: ForgotPassword, background_tasks: BackgroundTask
 
 @router.post("/reset-password")
 async def reset_password(form: ResetPassword):
-    print("working")
     user = await User.get_or_none(reset_token=form.token)
     if user is None:
         raise HTTPException(400, "Invalid token")
@@ -183,3 +183,11 @@ async def logout(user: User = Depends(get_current_user)):
     user.secret_key = generate_secret_key()
     await user.save()
     return {"message": "Logout successfull"}
+
+
+@router.put("/update-settings")
+async def update_user_settings(
+    settings: UserSettings, user: User = Depends(get_current_user)
+):
+    return await user.update_from_dict(settings.model_dump())
+

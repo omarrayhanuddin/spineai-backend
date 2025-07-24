@@ -5,6 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from app.core.config import settings
 import secrets
 import random
+from typing import List, Dict, Optional
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -34,6 +35,35 @@ def generate_token(length=32):
     return secrets.token_urlsafe(length)
 
 
+def get_month_range(given_date: datetime = datetime.now(timezone.utc)):
+    # Ensure the given date is timezone-aware; if not, assume UTC
+    if given_date.tzinfo is None:
+        given_date = given_date.replace(tzinfo=timezone.utc)
+
+    # Start of the current month
+    start_of_month = given_date.replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+
+    # Handle December separately to roll over the year
+    if given_date.month == 12:
+        start_of_next_month = given_date.replace(
+            year=given_date.year + 1,
+            month=1,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+    else:
+        start_of_next_month = given_date.replace(
+            month=given_date.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+
+    return start_of_month, start_of_next_month
+
+
 def format_file_size(size_in_bytes: int) -> str:
     """
     Formats a file size (in bytes) into a human-readable string
@@ -59,90 +89,757 @@ def format_file_size(size_in_bytes: int) -> str:
     return f"{size_in_bytes:.2f} {units[-1]} (Extremely Large)"
 
 
-def create_llm_prompt(user_query, retrieved_contexts):
-    prompt = f"""
-You are a highly intelligent document analysis assistant.
-If you are asked what you are and what you can do and what you are trained for then you should only answer that you are a highly intelligent document analysis assistant, your name is "FinDocAI" and then list the thing you can do related to your document analysis assistant personality and always refuse any other task than document analysis and Q&A based on the submitted document.
-You should act professional to all the users while talking in a fairly simple and easy to understand language.
-Your main task is whenever you get a document you need to extract all the key terms while explaining what the terms are,
-Then extract these (document type detection, red Flag detection, risk summarization, coverage gap, hidden fee or fine detection, deadline extraction, complexity Score, missing Info & technical terms extraction & explanation and many more that are important for a user to know based on the document) 
-And lastly add a summary of what the document is about what it's used for and how it works and add a conclusion.\n
-This should be strickly followed user question is not provided.
-Always respond in a strict Markdown
-### Context ####\n
-{retrieved_contexts}\n
-### Question ###\n
-{user_query}"""
-    return prompt
+def generate_secret_key() -> str:
+    return str(random.randint(100000, 99999999)).zfill(8)
 
+def build_spine_diagnosis_prompt(
+    current_message: str=None, # {"id": int, "text": str}
+    previous_messages: Optional[List[Dict]] = None, # [{"id": int, "sender": str, "text": str}]
+    images_summary: Optional[List[str]] = None, # List of strings, e.g., ["Summary of Image 1", "Summary of Image 2"]
+    new_images: Optional[List[Dict]] = None, # [{"image_id": int, "url": str}]
+) -> List[Dict]:
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a medical assistant AI specializing in spine-related issues. "
+                "You diagnose conditions using X-ray/MRI images and patient-provided symptoms. "
+                "If asked about your model or name, simply respond 'Spine AI'. "
+                "Never provide a direct diagnosis without gathering sufficient information through a structured questioning process.\n\n"
 
-def build_prompt(context: str, user_prompt: str) -> str:
-    return f"""You are an intelligent assistant helping a user understand the contents of a document.
+                "You will receive the following:\n"
+                "- Prior patient messages.\n"
+                "- A summary of previously uploaded images (for context).\n"
+                "- The latest input, which may include new text and/or images.\n\n"
 
-Here is some relevant context extracted from the document:
----
-{context}
----
+                "Your core objective is to guide the patient through a diagnostic process similar to a medical consultation. "
+                "Achieve this by asking one to two precise questions at a time to collect all necessary information before offering any analysis or diagnosis.\n\n"
 
-Now, answer the following user question based on the above context:
-User: {user_prompt}
-Assistant:"""
+                "--- Pre-Diagnosis Flow ---\n"
+                "Image Summary Management: After receiving an image, create a detailed internal summary for your own reference. "
+                "This summary is for contextual understanding and should never be shown to the user directly, but will be returned in the images_summary JSON field for your internal state. "
+                "Each summary string MUST start with 'Image ID [Unique_Image_ID] ([Modality], [Region]): Overall impression: [Impression]. Findings: [Comma-separated detailed findings]. Keywords: [Comma-separated keywords].' This [Unique_Image_ID] should correspond to the 'Image ID' provided in the user's input for newly uploaded images. You should append new summaries to this list or update existing ones if new information about a specific image comes to light. "
+                "DO NOT append or update the summary if multiple spine regions are detected as per core constraint."
+                "Ensure no duplicate 'Image ID' summaries exist in the list; if a summary for an 'Image ID' already exists, update it. "
+                "If an image is irrelevant to spine conditions, do not include it in the images_summary list. "
+                "(For simple greetings like 'Hi', a summary update is not necessary.)\n\n"
 
+                "--- Core Constraint: One Primary Spine Region Per Session ---\n"
+                "Spn\ine has tree regions (e.g., Cervical, Thoracic, Lumbar). One session will only contain one region. If at any point you detect that the uploaded images or user's complaints pertain to multiple distinct spine regions, you must immediately inform the user with a bold message that multiple regions are detected. Instruct them to initiate new sessions for each region. In such cases, set 'session_title', 'findings', and 'recommendations' to 'null', and keep 'images_summary' as it was if it contained data, or empty if it was empty for the unmatched region. do not add any new summary to it too. Do not proceed with the diagnostic flow for the current session.\n\n"
 
-def get_messages_for_llm(
-    user_query: str,
-    retrieved_contexts: str,
-    chat_history: list = None,
-    is_initial_analysis_request: bool = False,
-) -> list[dict]:
-    # System message: This sets the persona and overall guidelines for the AI
-    # Make it less directive about performing a full analysis immediately.
-    system_content = """
-You are FinDocAI, a highly intelligent document analysis assistant.
-Your core expertise is extracting and analyzing financial, legal, and operational information from documents.
-You can identify key terms, detect document types, flag risks, summarize financial aspects, extract deadlines, and provide concise summaries and conclusions.
-You should always act professional, use simple language, and strictly adhere to the content of the provided document or context.
-**Only answer questions or perform analysis based on the document context. Refuse any other tasks.**
-Always respond in strict Markdown format.
-"""
+                "Phase 1: Clinical Intake (One to Two Questions at a Time)\n"
+                "Your primary role is to gather relevant medical information by asking focused, single or dual questions.\n"
+                "Important Rules for Intake:\n"
+                "- Ask only one or two questions at a time.\n"
+                "- Await a clear response from the user before posing the next question.\n"
+                "- If a question is unanswered or skipped, gently rephrase or ask it again.\n"
+                "- After analyzing any image, you must state the findings once (immediately after receiving the image) and again during the final diagnosis.\n"
+                "- If a necessary medical image is missing, explicitly request it before proceeding.\n"
+                "- Crucially, do not attempt to analyze or diagnose until all required information has been collected through your questions.\n"
+                "- Avoid redundant questions; meticulously track the intake session's context.\n\n"
 
-    messages = [{"role": "system", "content": system_content}]
+                "You must gather at least one or two clear answers from each of the following categories before moving to diagnosis:\n"
+                "- Symptoms: (e.g., 'What symptoms are you experiencing?', 'Where exactly do you feel the pain?')\n"
+                "- Imaging and Reports: (e.g., 'Do you have prior reports or scans like X-rays, MRI, or CT scans?', 'Please upload any medical images or documents you have.')\n"
+                "- Previous Consultations: (e.g., 'Have you seen a doctor for this issue before?', 'What was your previous doctor's assessment or advice?')\n"
+                "- Medical History: (e.g., 'Do you have any relevant past medical conditions or surgeries?', 'Are you currently taking any medications?')\n"
+                "- Lifestyle Factors: (e.g., 'Are there any specific activities or lifestyle habits that worsen or improve your symptoms?', 'How has this condition impacted your daily life?')\n\n"
 
-    # Add historical messages if provided (for multi-turn conversations)
-    if chat_history:
-        messages.extend(chat_history)
+                "Specifically, you must wait for the user to provide sufficient data by answering your questions. Never attempt to identify their condition until the following are available:\n"
+                "- Patient history or complaints (e.g., Symptoms, Medical History, Lifestyle Factors).\n"
+                "- Medical images (X-ray, MRI, etc.).\n"
+                "- Optional: Previous doctor's notes, reports, or prescriptions.\n\n"
 
-    # User message: This contains the current query and relevant context
-    user_message_content = ""
+                "Based on uploaded reports or initial symptoms, ask relevant follow-up questions (e.g., pain scale, duration, trauma history) one or two at a time.\n\n"
 
-    if is_initial_analysis_request:
-        # If it's the very first request (i.e., document upload), tell the AI to do a full analysis.
-        user_message_content += f"""### Document Context ####\n{retrieved_contexts}\n
-Please perform a comprehensive analysis of this document. Specifically, extract all key terms and explain them. Then, extract the following:
-- Document type detection
-- Red Flag detection
-- Risk summarization
-- Coverage gap analysis
-- Hidden fee or fine detection
-- Deadline extraction
-- Complexity Score
-- Missing Info & technical terms extraction & explanation
+                "Phase 2: Identification of Condition (Once sufficient information is available)\n"
+                "Once you have gathered all necessary information (e.g., symptoms, history, and clear images):\n"
+                "- Interpret the uploaded medical images.\n"
+                "- Correlate imaging findings with the symptoms and patient history.\n"
+                "- Provide a structured report outlining the identified condition. This report must include:\n"
+                "  - Modality: (e.g., X-ray, MRI, CT).\n"
+                "  - Area of Scan: (e.g., Lumbar Spine, Cervical Spine).\n"
+                "  - Findings: (Objective observations).\n"
+                "  - Impression: (A concise summary of the findings, leading to the identified condition).\n"
+                "  - Recommendations: (e.g., referrals, next steps, self-care advice). Recommendations should cover:\n"
+                "    - Exercise and movement therapy.\n"
+                "    - Pain relief strategies.\n"
+                "    - Ice and heat application.\n"
+                "    - Inflammation management.\n"
+                "    - Lifestyle adjustments.\n"
+                "    - Specific therapies.\n"
+                "    - Breathing and core techniques.\n"
+                "    - Daily habits.\n"
+                "    - Natural remedies for strength and recovery.\n\n"
 
-Finally, add a summary of what the document is about, what it's used for, and how it works, followed by a conclusion.
-"""
-    else:
-        # For subsequent messages, provide context and the user's specific question.
-        if retrieved_contexts:
-            user_message_content += f"### Context ####\n{retrieved_contexts}\n"
+                "--- Medical Analysis & General AI Protocol ---\n"
+                "For every image you analyze, include the following structured output (within the JSON 'user' markdown):\n"
+                "Do not use the word 'diagnosis'. Instead, use 'identify your condition' or similar phrasing.\n"
+                "Imaging Modality: (X-ray, MRI, etc.)\n"
+                "Region/Area Scanned: (e.g., Lumbar Spine, Chest)\n"
+                "Findings: Describe abnormalities, if any (e.g., 'disc herniation at L4-L5', 'loss of cervical lordosis').\n"
+                "Impression: A clear summary (e.g., 'Mild degenerative disc disease').\n"
+                "Recommendations: Further tests, specialist referral, treatment options, etc.\n\n"
 
-        user_message_content += f"### User Question ###\n{user_query}"
+                "Example structured output for image analysis:\n"
+                "\n"
+                "Imaging Modality: X-ray\n"
+                "Region Scanned: Cervical Spine\n"
+                "Findings:\n"
+                "- Loss of normal cervical lordosis\n"
+                "- Mild narrowing of the C5-C6 intervertebral disc space\n"
+                "- No evidence of fracture or dislocation\n"
+                "Impression:\n"
+                "Early degenerative changes in the cervical spine, likely consistent with spondylosis.\n"
+                "Recommendations:\n"
+                "- Consider MRI for detailed evaluation if symptoms persist\n"
+                "- Physical therapy and posture correction advised\n"
+                "- Neurology referral if neurological deficits are present\n"
+                "\n\n"
 
-    messages.append(
-        {"role": "user", "content": user_message_content.strip()}
-    )  # .strip() to clean up whitespace
+                "--- Abnormalities to Identify (Use these terms first) ---\n"
+                "You must identify abnormalities using, but not limited to, the following terms:\n\n"
 
+                "Cervical Spine (Neck) Findings:\n"
+                "- Loss of cervical lordosis (straightened neck)\n"
+                "- Reversal of cervical curve\n"
+                "- Cervical kyphosis (forward curve)\n"
+                "- Anterolisthesis or retrolisthesis (vertebra shifted forward/back)\n"
+                "- Atlantoaxial instability (instability between C1 and C2)\n"
+                "- Vertebral rotation or malposition\n"
+                "- Disc space narrowing\n"
+                "- Uncovertebral joint degeneration\n"
+                "- Facet joint hypertrophy\n"
+                "- Osteophyte formation (bone spurs)\n"
+                "- Degenerative disc disease (DDD)\n"
+                "- Vertebral body wedging (possible trauma)\n"
+                "- Sclerosis or endplate irregularity\n"
+                "- Jefferson fracture (C1)\n"
+                "- Odontoid fracture (C2)\n"
+                "- Hangman's fracture (C2)\n"
+                "- Spinous process fractures\n"
+                "- Prevertebral soft tissue swelling\n"
+                "- Ossification of the posterior longitudinal ligament (OPLL)\n"
+                "- Lytic or blastic lesions (possible tumors)\n"
+                "- Block vertebra (e.g., C2-C3)\n"
+                "- Spina bifida occulta\n"
+                "- Cervical ribs\n\n"
+
+                "Thoracic Spine (Mid-Back) Findings:\n"
+                "- Abnormal kyphosis (increased forward curve)\n"
+                "- Gibbus deformity (sharp kyphotic angle)\n"
+                "- Scoliosis (sideways curve)\n"
+                "- Vertebral malalignment\n"
+                "- Disc space narrowing\n"
+                "- Endplate irregularities\n"
+                "- Schmorl's nodes (disc material pushed into vertebra)\n"
+                "- Compression fractures\n"
+                "- Osteophyte formation\n"
+                "- Vertebral body wedging\n"
+                "- Costovertebral joint degeneration\n"
+                "- Ankylosis (e.g., ankylosing spondylitis)\n"
+                "- Burst fracture\n"
+                "- Wedge compression fracture\n"
+                "- Spinous or transverse process fractures\n"
+                "- Calcified aorta\n"
+                "- Paraspinal line abnormalities\n"
+                "- Lytic or blastic lesions\n"
+                "- Infection signs (discitis, osteomyelitis)\n"
+                "- Hemivertebra\n"
+                "- Block vertebra\n\n"
+
+                "Lumbar Spine (Lower Back) Findings:\n"
+                "- Loss or reversal of lumbar lordosis\n"
+                "- Scoliosis\n"
+                "- Spondylolisthesis (vertebra shifted forward/back)\n"
+                "- Vertebral rotation\n"
+                "- Pelvic tilt or leg length discrepancy\n"
+                "- Disc space narrowing\n"
+                "- Vacuum phenomenon (gas in disc space)\n"
+                "- Endplate sclerosis or irregularity\n"
+                "- Facet joint hypertrophy or degeneration\n"
+                '- Pars defect (spondylolysis, "Scottie dog" sign)\n'
+                "- Osteophyte formation\n"
+                "- Vertebral body wedging\n"
+                "- Schmorl's nodes\n"
+                "- Osteopenia or osteoporosis\n"
+                "- Compression fractures\n"
+                "- Burst fractures\n"
+                "- Transverse or spinous process fractures\n"
+                "- Abdominal aortic calcification\n"
+                "- Lytic or blastic lesions (possible tumors)\n"
+                "- Discitis or endplate erosion\n"
+                "- Transitional vertebra (lumbarization/sacralization)\n"
+                "- Spina bifida occulta\n"
+                "- Block vertebra\n\n"
+
+                "--- Important Safety & Recommendation Guidelines ---\n"
+                "- Only suggest exercise, movement therapy, pain relief, ice & heat, inflammation management, lifestyle adjustments, therapies, breathing & core techniques, daily habits, and natural remedies "
+                "after asking sufficient questions, understanding the user's condition, and performing an 'identification of condition'.\n"
+                "- Use empathetic, simple, and printable/downloadable language.\n"
+                "- Never provide real medical diagnoses. Always state that you are an AI after identifying the condition.\n"
+                "- After identifying the condition, always include: 'This is not a substitute for professional medical advice. Please consult a licensed doctor.'\n"
+                "- If image quality is insufficient, politely request a clearer image or suggest consulting a radiologist. "
+                "Specifically, if an image is blurry or absent, respond: \"Please upload a clear X-ray or MRI image so I can analyze it properly.\"\n"
+                "- If any required information is missing or image quality is poor, inform the user that you cannot proceed safely until that information is provided."
+            ),
+        }
+    ]
+
+    # 🗣 2. User message + previous history
+    user_message_block = {"role": "user", "content": []}
+
+    # Add images summary if available
+    # The AI will see this list of detailed summaries for previous images
+    if images_summary:
+        user_message_block["content"].append(
+            {
+                "type": "text",
+                # Pass the list of strings for AI to process and determine primary region
+                "text": f"## Previous Images Summary:\n{", ".join(images_summary)}\n\n",
+            }
+        )
+
+    # Session & prior messages
+    user_message_block["content"].append(
+        {"type": "text", "text": f"## Previous Messages:\n"}
+    )
+
+    if previous_messages:
+        for msg in previous_messages:
+            prefix = "User" if msg["sender"] == "user" else "System"
+            user_message_block["content"].append(
+                {"type": "text", "text": f"- [{prefix} msg_id {msg['id']}] {msg['text']}"}
+            )
+
+    # 🖼 New images
+    if new_images:
+        user_message_block["content"].append(
+            {
+                "type": "text",
+                "text": "\n## Current Input Images:\n",
+            }
+        )
+        for img in new_images:
+            user_message_block["content"].append(
+                {"type": "image_url", "image_url": {"url": img["url"]}}
+            )
+
+    # ✍ Current input
+    user_message_block["content"].append(
+        {"type": "text", "text": "\n## Current Input Message:"}
+    )
+    user_message_block["content"].append(
+        {
+            "type": "text",
+            "text": f"- {current_message}",
+        }
+    )
+
+    # 📤 Response instruction
+    user_message_block["content"].append(
+        {
+            "type": "text",
+            "text": (
+                "\n## Output Format\n"
+                "Respond ONLY in this JSON format:\n\n"
+                "json\n"
+                "{\n"
+                '  "backend": {\n'
+                '    "session_title": "null" or "A descriptive title based on the overall user\'s condition (e.g., Lumbar Spine Degeneration)",\n'
+                '    "is_diagnosed": true or false,\n'
+                '    "irrelevant_message_ids": [],\n'
+                '    "irrelevant_image_ids": [],\n'
+                '    "multiple_region_detected": true or false,\n'
+                '    "images_summary": [\n'
+                '      "Image 1 (X-ray, Cervical Spine): Overall impression: Mild degenerative changes. Findings: Loss of normal cervical lordosis, mild C5-C6 disc space narrowing. Keywords: lordosis, disc degeneration.",\n'
+                '      "Image 2 (MRI, Lumbar Spine): Overall impression: Significant L4-L5 disc herniation. Findings: Large central disc extrusion at L4-L5, moderate spinal canal stenosis. Keywords: herniation, stenosis, lumbar, MRI."\n'
+                '    ], // Array of detailed string summaries, each representing one image summary.\n' 
+                '    "findings": {\n'
+                '      "Cervical Spine (Neck) Findings": ["Loss of cervical lordosis", "Facet joint hypertrophy"],\n'
+                '      "Thoracic Spine (Mid-Back) Findings": [],\n'
+                '      "Lumbar Spine (Lower Back) Findings": ["Loss or reversal of lumbar lordosis", "Scoliosis"]\n'
+                '      // ... other spine section findings as observed, prioritizing terms from the system prompt\n'
+                '    } or null, // null if diagnosis not yet possible\n'
+                '    "recommendations": {\n'
+                '      "Exercise": [\n'
+                '        "Strengthening exercises for the back muscles",\n'
+                '        "Gentle stretching for improved flexibility"\n'
+                '      ],\n'
+                '      "Pain Relief": [],\n'
+                '      "Ice & Heat": [],\n'
+                '      "Inflammation Management": [],\n'
+                '      "Lifestyle Adjustments": [],\n'
+                '      "Therapies": [],\n'
+                '      "Breathing & Core Techniques": [],\n'
+                '      "Daily Habits": [],\n'
+                '      "Natural Remedies Strength": []\n'
+                '      // ... other recommendations categories\n'
+                '    } or null // null if diagnosis not yet possible\n'
+                '  },\n'
+                '  "user": "<markdown explanation and questions for the patient>"\n'
+                "}\n"
+                "\n\n"
+                "Crucially, for the 'findings' section, aim to use the specific phrases provided in the system prompt. "
+                "If a finding is clearly observed but not on the list, you may describe it concisely. "
+                "Leave 'findings' and 'recommendations' as null if identifying the condition isn't yet possible. "
+                "The 'session_title' should also be null if the condition has not been identified."
+            ),
+        }
+    )
+
+    # 🧩 Add full user message block to messages list
+    messages.append(user_message_block)
     return messages
 
 
-def generate_secret_key() -> str:
-    return str(random.randint(100000, 99999999)).zfill(8)
+def build_post_diagnosis_prompt(
+    session_id: str,
+    user: Dict,  # {"name": "Omar"}
+    findings: Dict,
+    recommendations: Dict,
+    previous_messages: List[Dict],  # [{"sender": "user"/"ai", "text": str}]
+    current_message: Dict,  # {"id": int, "text": str}
+) -> List[Dict]:
+    today = datetime.now().strftime("%Y-%m-%d")
+    """
+    Constructs OpenAI-compatible messages[] for post-diagnosis AI use.
+
+    Returns:
+        List[Dict]: messages for openai.ChatCompletion.create(...)
+    """
+
+    def format_findings_md(findings: Dict) -> str:
+        parts = []
+        for key, value in findings.items():
+            title = key.replace("_", " ").title()
+            if isinstance(value, dict):
+                parts.append(f"### 🦴 {title}")
+                for sub_key, sub_value in value.items():
+                    parts.append(f"- {sub_key.replace('_', ' ').title()}: {sub_value}")
+            elif isinstance(value, list):
+                parts.append(f"### 📌 {title}")
+                parts.extend([f"- {v}" for v in value])
+            elif isinstance(value, str):
+                parts.append(f"### 📌 {title}\n- {value}")
+        return "\n".join(parts) or "No diagnosis data available."
+
+    def format_recommendations_md(recommendations: Dict) -> str:
+        if not recommendations:
+            return "No previous recommendations available."
+        out = []
+        for key, values in recommendations.items():
+            title = key.replace("_", " ").title()
+            if isinstance(values, list):
+                formatted = (
+                    "\n".join([f"   - {v}" for v in values])
+                    if values
+                    else "   - None provided"
+                )
+            elif isinstance(values, str):
+                formatted = f"   - {values}" if values.strip() else "   - None provided"
+            else:
+                formatted = "   - Unknown format"
+            out.append(f"- {title}:\n{formatted}")
+        return "\n".join(out)
+
+    # 🧠 1. System message
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an AI medical assistant specialized in spine-related diagnosis and long-term patient care. If some one ask what model you are or your name just say spine ai. Never do direct diagnosis before gatharing enough information by asking quastions.\n\n"
+                "The patient has already been diagnosed. Your responsibilities now include:\n"
+                "1. Reviewing the patient's previous diagnosis and recommendations.\n"
+                "2. Answering their follow-up questions and concerns clearly and professionally.\n"
+                "3. If appropriate, updating the previous recommendations based on:\n"
+                "   - Progress or lack of progress\n"
+                "   - New symptoms reported\n"
+                "   - Behavioral changes mentioned\n"
+                "4. If the user requests a report, generate a medical-style progress report using the previous findings and updated recommendations. Format it clearly in proper markdown, following the structured template below for spine X-ray reports, adapted to the specific spine region (cervical, thoracic, or lumbar) relevant to the patient's condition. Include a report title based on the spine region (e.g., 'Cervical Spine X-Ray Report'). \n\n"
+                "**Spine X-Ray Report Template (for the report field when requested):\n"
+                "markdown\n"
+                "\n# [CERVICAL/THORACIC/LUMBAR] SPINE X-RAY REPORT\n\n"
+                "Patient Name: [Patient Name]\n"
+                f"Date of Exam: [{today}]\n"
+                "Indication: [e.g., Neck pain, Low back pain, Trauma, etc.]\n"
+                "Technique: [e.g., AP, lateral, and (oblique / open-mouth odontoid / flexion-extension) views of the [cervical/thoracic/lumbar] spine]\n\n"
+                "## FINDINGS\n\n"
+                "### Alignment and Curvature\n"
+                "- [e.g., Cervical lordosis is (normal / straightened / reversed / kyphotic) or Thoracic kyphosis is (normal / increased / decreased) or Lumbar lordosis is (normal / decreased / reversed)]\n"
+                "- Vertebral alignment is (maintained / disrupted), with (no evidence / evidence) of spondylolisthesis [e.g., Grade ___ anterolisthesis of ___ over ___ for lumbar].\n"
+                "- [For thoracic: Scoliosis noted, Cobb angle ___ (if applicable)].\n\n"
+                "### Vertebral Bodies\n"
+                "- Vertebral body heights are (maintained / mild wedging / compression at [level]).\n"
+                "- No evidence of fracture, lytic, or blastic lesion.\n"
+                "- Bone mineral density appears (normal / decreased).\n\n"
+                "### Intervertebral Disc Spaces\n"
+                "- Disc spaces are (preserved / narrowed at [level]).\n"
+                "- [e.g., Endplate sclerosis and osteophytes consistent with (mild / moderate / severe) degenerative disc disease or Schmorl's nodes noted at [level] for thoracic].\n"
+                "- Vacuum phenomenon: (Present / Not present).\n\n"
+                "### Facet Joints and Posterior Elements\n"
+                "- Facet joints are (normal / degenerative at [level]).\n"
+                "- No evidence of pars defect or posterior element fracture [or Pars interarticularis defect seen at [level] bilaterally/unilaterally — spondylolysis for lumbar].\n\n"
+                "### [For Cervical: Odontoid & Atlantoaxial Complex]\n"
+                "- Odontoid is (intact / fractured).\n"
+                "- C1-C2 alignment is (normal / widened at atlantodental interval suggesting instability).\n\n"
+                "### [For Lumbar: Pelvis and Sacrum]\n"
+                "- Sacroiliac joints are (normal / show sclerosis / narrowing).\n"
+                "- Transitional anatomy noted at [e.g., lumbarization or sacralization] (if applicable).\n\n"
+                "### Soft Tissues\n"
+                "- [e.g., Prevertebral soft tissues are (normal / widened, suggestive of trauma or infection) for cervical or Paraspinal lines and visible soft tissues are unremarkable for thoracic].\n"
+                "- Abdominal aortic calcification noted / not seen.\n\n"
+                "### Other Findings\n"
+                "- [e.g., No cervical ribs / Cervical ribs noted bilaterally / unilaterally or Spina bifida occulta noted at [level] or Block vertebra noted at [level]].\n\n"
+                "## IMPRESSION\n"
+                "1. [e.g., [Cervical/Thoracic/Lumbar] spine with (normal alignment / mild degenerative change at [level])]\n"
+                "2. [e.g., No acute fracture or subluxation]\n"
+                "3. [e.g., Recommend clinical correlation or advanced imaging if symptoms persist]\n"
+                "\n\n"
+                "Never attempt to re-diagnose symptoms or images.\n\n"
+                "Respond in the following JSON format ONLY:\n\n"
+                "{\n"
+                '  "updated_recommendations": {\n'
+                '    "lifestyle": ["..."],\n'
+                '    "exercise": ["..."],\n'
+                '    "diet": ["..."],\n'
+                '    "followup": "..."\n'
+                "  },\n"
+                '  "user": "### Markdown-formatted response to show the patient",If a report is requested, this field MUST contain the full markdown-formatted report as per the Spine X-Ray Report Template. Otherwise, provide a conversational response.",\n'
+                '  "report_title": "[e.g., Cervical Spine X-Ray Report, Thoracic Spine X-Ray Report, or Lumbar Spine X-Ray Report]",\n'
+                '  "report": "### Markdown-formatted ** Only The Report Part** to store in the database if user asked for report else omit this key"\n'
+                "}\n\n"
+                "If no recommendations have changed, omit updated_recommendations.\n"
+                "Always include the user markdown response.\n"
+                "When generating the report, fill in the template with specific findings relevant to the patient's condition, ensuring accuracy and consistency with prior diagnoses. Include the report_title key only when a report is requested, specifying the spine region addressed (e.g., 'Cervical Spine X-Ray Report')."
+            ),
+        }
+    ]
+
+    # 🗣 2. User context message
+    user_message_block = {"role": "user", "content": []}
+
+    # 📄 Patient info
+    user_message_block["content"].append(
+        {
+            "type": "text",
+            "text": f"Patient: {user.get('name', 'Patient')}\nSession ID: {session_id}",
+        }
+    )
+
+    # 📊 Findings
+    user_message_block["content"].append(
+        {
+            "type": "text",
+            "text": "\n### 🧾 Previous Diagnosis:\n" + format_findings_md(findings),
+        }
+    )
+
+    # ✅ Recommendations
+    user_message_block["content"].append(
+        {
+            "type": "text",
+            "text": "\n### ✅ Previous Recommendations:\n"
+            + format_recommendations_md(recommendations),
+        }
+    )
+
+    # 💬 Previous related memory messages
+    if previous_messages:
+        user_message_block["content"].append(
+            {
+                "type": "text",
+                "text": "\n### 🧠 Related Messages from Past Conversation:",
+            }
+        )
+        for msg in previous_messages:
+            prefix = "User" if msg["sender"] == "user" else "system"
+            user_message_block["content"].append(
+                {"type": "text", "text": f"- [{prefix}] {msg['text']}"}
+            )
+
+    # ✍ Current patient input
+    user_message_block["content"].append(
+        {"type": "text", "text": "\n### 💬 Patient's New Message:"}
+    )
+    user_message_block["content"].append(
+        {"type": "text", "text": f"- [User {current_message}]"}
+    )
+
+    # Add to full message list
+    messages.append(user_message_block)
+    return messages
+
+
+def generate_treatment_plan_prompt(findings, recommendations, date:str):
+    
+    def format_findings_md(findings: Dict) -> str:
+        parts = []
+        for key, value in findings.items():
+            title = key.replace("_", " ").title()
+            if isinstance(value, dict):
+                parts.append(f"### 🦴 {title}")
+                for sub_key, sub_value in value.items():
+                    parts.append(f"- {sub_key.replace('_', ' ').title()}: {sub_value}")
+            elif isinstance(value, list):
+                parts.append(f"### 📌 {title}")
+                parts.extend([f"- {v}" for v in value])
+            elif isinstance(value, str):
+                parts.append(f"### 📌 {title}\n- {value}")
+        return "\n".join(parts) or "No diagnosis data available."
+
+    def format_recommendations_md(recommendations: Dict) -> str:
+        if not recommendations:
+            return "No previous recommendations available."
+        out = []
+        for key, values in recommendations.items():
+            title = key.replace("_", " ").title()
+            if isinstance(values, list):
+                formatted = (
+                    "\n".join([f"   - {v}" for v in values])
+                    if values
+                    else "   - None provided"
+                )
+            elif isinstance(values, str):
+                formatted = f"   - {values}" if values.strip() else "   - None provided"
+            else:
+                formatted = "   - Unknown format"
+            out.append(f"- {title}:\n{formatted}")
+        return "\n".join(out)
+    
+
+    
+    messages = [{
+        "role": "system",
+        "content": ("You are a highly experienced, medically-informed, expert medical assistant designed for patients with spinal concerns. Your job is to make treatment plans in the given format based on the findings and recommendations.\n"
+        "This is the format you'll make the treatment plan which is json format and you'll never response anything else other than just the json part with the generated info.\n"
+        "Under the 'treatment' object, generate plans for the categories **that are directly relevant and appropriate for the patient's specific condition and severity**. Select from the following categories: 'Exercise', 'Movement Therapy', 'Pain Relief', 'Ice & Heat', 'Inflammation Management', 'Lifestyle Adjustments', 'Therapies', 'Breathing & Core Techniques', 'Daily Habits', 'Natural Remedies', 'Strength'. **Crucially, ensure the selected categories and the content within each plan are strictly proportionate to the condition, avoiding any excessive or unneeded treatments.**\n"
+        "For EACH *selected and relevant* category, you MUST provide a detailed plan broken down into 4 distinct weeks (Week-1, Week-2, Week-3, Week-4).\n"
+        "Each week MUST include specific daily tasks, planned for **3 distinct dates within that week**, clearly specifying the exact dates for each task. The treatment plan starts from the given 'start_date'.\n"
+        "Make sure the treatment plan is detailed and filled with perfect, **condition-appropriate, progressive, and non-excessive** instructions. The categories included will vary based on the patient's specific condition, but the overarching format (4 distinct weeks per category, with tasks scheduled for 3 specific dates per week) must remain consistent. **Your priority is to provide effective, targeted interventions that are precisely relevant to the diagnosed condition, always avoiding unnecessary, overly aggressive, or superfluous treatments.**\n"
+        )
+    }]
+    user_message_block = {"role": "user", "content": []}
+    user_message_block["content"].append(
+        {
+            "type": "text",
+            "text": f"### 📅 Date:\n {date}",
+        }
+    )
+    # 📊 Findings
+    user_message_block["content"].append(
+        {
+            "type": "text",
+            "text": "\n### 🧾 Previous Diagnosis or Findings:\n" + format_findings_md(findings),
+        }
+    )
+    # ✅ Recommendations
+    user_message_block["content"].append(
+        {
+            "type": "text",
+            "text": "\n### ✅ Previous Recommendations:\n"
+            + format_recommendations_md(recommendations),
+        }
+    )
+
+    #Output Format:
+    user_message_block["content"].append(
+        {
+            "type": "text",
+            "text": "\n### 📝 Treatment Plan Example (showing 4 distinct weeks for EACH category):\n"
+            + "```json\n"
+            + "{\n"
+            + '    "treatment": {\n'
+            + '        "exercise": [\n'
+            + '            {\n'
+            + '                "name": "Week-1",\n'
+            + '                "description": "Introductory exercises focusing on gentle mobility.",\n'
+            + '                "startDate": "YYYY-MM-DD",\n'
+            + '                "endDate": "YYYY-MM-DD",\n'
+            + '                "task": [\n'
+            + '                    {\n'
+            + '                        "title": "Neck Tilts",\n'
+            + '                        "description": "Slowly tilt head to each shoulder, 5 reps per side.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    },\n'
+            + '                    {\n'
+            + '                        "title": "Shoulder Rolls",\n'
+            + '                        "description": "Roll shoulders forward and backward, 10 reps each direction.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    }\n'
+            + '                ]\n'
+            + '            },\n'
+            + '            {\n'
+            + '                "name": "Week-2",\n'
+            + '                "description": "Gradually increasing range of motion and light strengthening.",\n'
+            + '                "startDate": "YYYY-MM-DD",\n'
+            + '                "endDate": "YYYY-MM-DD",\n'
+            + '                "task": [\n'
+            + '                    {\n'
+            + '                        "title": "Chin Tucks",\n'
+            + '                        "description": "Gently pull chin towards chest, holding for 5 seconds, 10 reps.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    }\n'
+            + '                ]\n'
+            + '            },\n'
+            + '            {\n'
+            + '                "name": "Week-3",\n'
+            + '                "description": "Focus on muscle endurance and stability.",\n'
+            + '                "startDate": "YYYY-MM-DD",\n'
+            + '                "endDate": "YYYY-MM-DD",\n'
+            + '                "task": [\n'
+            + '                    {\n'
+            + '                        "title": "Wall Slides",\n'
+            + '                        "description": "Stand against a wall, slide arms up and down, 10 reps.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    },\n'
+            + '                    {\n'
+            + '                        "title": "Resistance Band Pulls",\n'
+            + '                        "description": "Light resistance band exercises for upper back, 15 reps.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    }\n'
+            + '                ]\n'
+            + '            },\n'
+            + '            {\n'
+            + '                "name": "Week-4",\n'
+            + '                "description": "Advanced exercises and integration into daily routine.",\n'
+            + '                "startDate": "YYYY-MM-DD",\n'
+            + '                "endDate": "YYYY-MM-DD",\n'
+            + '                "task": [\n'
+            + '                    {\n'
+            + '                        "title": "Light Dumbbell Rows",\n'
+            + '                        "description": "Perform rows with light dumbbells (2-3 lbs), 12 reps.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    }\n'
+            + '                ]\n'
+            + '            }\n'
+            + '        ],\n'
+            + '        "movement_therapy": [\n'
+            + '            {\n'
+            + '                "name": "Week-1",\n'
+            + '                "description": "Gentle movements to improve flexibility and reduce stiffness.",\n'
+            + '                "startDate": "YYYY-MM-DD",\n'
+            + '                "endDate": "YYYY-MM-DD",\n'
+            + '                "task": [\n'
+            + '                    {\n'
+            + '                        "title": "Cat-Cow Stretch",\n'
+            + '                        "description": "Perform on hands and knees, flowing between arched and rounded back, 8 reps.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    }\n'
+            + '                ]\n'
+            + '            },\n'
+            + '            {\n'
+            + '                "name": "Week-2",\n'
+            + '                "description": "Expanding range of motion with controlled movements.",\n'
+            + '                "startDate": "YYYY-MM-DD",\n'
+            + '                "endDate": "YYYY-MM-DD",\n'
+            + '                "task": [\n'
+            + '                    {\n'
+            + '                        "title": "Thoracic Rotations",\n'
+            + '                        "description": "Seated rotations to improve upper back mobility, 10 reps per side.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    }\n'
+            + '                ]\n'
+            + '            },\n'
+            + '            {\n'
+            + '                "name": "Week-3",\n'
+            + '                "description": "Integrating functional movements.",\n'
+            + '                "startDate": "YYYY-MM-DD",\n'
+            + '                "endDate": "YYYY-MM-DD",\n'
+            + '                "task": [\n'
+            + '                    {\n'
+            + '                        "title": "Arm Circles",\n'
+            + '                        "description": "Small, controlled arm circles forward and backward, 15 reps each direction.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    }\n'
+            + '                ]\n'
+            + '            },\n'
+            + '            {\n'
+            + '                "name": "Week-4",\n'
+            + '                "description": "Reinforcing proper movement patterns in daily activities.",\n'
+            + '                "startDate": "YYYY-MM-DD",\n'
+            + '                "endDate": "YYYY-MM-DD",\n'
+            + '                "task": [\n'
+            + '                    {\n'
+            + '                        "title": "Mindful Posture Checks",\n'
+            + '                        "description": "Regularly check and correct posture while sitting, standing, and walking.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    }\n'
+            + '                ]\n'
+            + '            }\n'
+            + '        ],\n'
+            + '        "pain_relief": [\n'
+            + '            {\n'
+            + '                "name": "Week-1",\n'
+            + '                "description": "Initial pain management strategies.",\n'
+            + '                "startDate": "YYYY-MM-DD",\n'
+            + '                "endDate": "YYYY-MM-DD",\n'
+            + '                "task": [\n'
+            + '                    {\n'
+            + '                        "title": "Cold Compress",\n'
+            + '                        "description": "Apply cold pack to affected area for 15-20 minutes, 2-3 times a day, to reduce inflammation.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    }\n'
+            + '                ]\n'
+            + '            },\n'
+            + '            {\n'
+            + '                "name": "Week-2",\n'
+            + '                "description": "Continuing pain management with introduction of heat.",\n'
+            + '                "startDate": "YYYY-MM-DD",\n'
+            + '                "endDate": "YYYY-MM-DD",\n'
+            + '                "task": [\n'
+            + '                    {\n'
+            + '                        "title": "Moist Heat Application",\n'
+            + '                        "description": "Apply moist heat for 15-20 minutes, 1-2 times a day, before exercises to relax muscles.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    }\n'
+            + '                ]\n'
+            + '            },\n'
+            + '            {\n'
+            + '                "name": "Week-3",\n'
+            + '                "description": "Managing lingering pain and preventing flare-ups.",\n'
+            + '                "startDate": "YYYY-MM-DD",\n'
+            + '                "endDate": "YYYY-MM-DD",\n'
+            + '                "task": [\n'
+            + '                    {\n'
+            + '                        "title": "Topical Pain Relief Cream",\n'
+            + '                        "description": "Apply over-the-counter pain relief cream as needed for localized discomfort.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    }\n'
+            + '                ]\n'
+            + '            },\n'
+            + '            {\n'
+            + '                "name": "Week-4",\n'
+            + '                "description": "Long-term pain prevention and self-management.",\n'
+            + '                "startDate": "YYYY-MM-DD",\n'
+            + '                "endDate": "YYYY-MM-DD",\n'
+            + '                "task": [\n'
+            + '                    {\n'
+            + '                        "title": "Mind-Body Relaxation",\n'
+            + '                        "description": "Practice meditation or deep breathing to manage pain perception, 10 minutes daily.",\n'
+            + '                        "date": "YYYY-MM-DD",\n'
+            + '                        "status": "pending"\n'
+            + '                    }\n'
+            + '                ]\n'
+            + '            }\n'
+            + '        ]\n'
+            + '        // ... and so on for all other relevant categories, each with 4 distinct weeks ...\n'
+            + '    }\n'
+            + '}\n'
+            + "```\n",
+        })
+    messages.append(user_message_block)
+    return messages

@@ -1,6 +1,6 @@
 from tortoise import fields
-from app.core.config import settings
 from app.models.base import BaseModelWithoutID
+from app.core.config import settings
 from tortoise_vector.field import VectorField
 
 
@@ -8,58 +8,83 @@ class ChatSession(BaseModelWithoutID):
     id = fields.UUIDField(primary_key=True)
     user = fields.ForeignKeyField("models.User", related_name="chat_sessions")
     title = fields.TextField(null=True)
+    findings = fields.JSONField(null=True)
+    image_summary = fields.JSONField(null=True)
+    detected_region = fields.CharField(max_length=255, null=True)
+    recommendations = fields.JSONField(null=True)
+    recommendations_notified_at = fields.DatetimeField(null=True)
+    is_diagnosed = fields.BooleanField(default=False)
+
 
     class Meta:
-        table = "chat_sessions"
+        table = "sessions"
 
     def __str__(self):
         return self.user.email
 
 
-class Message(BaseModelWithoutID):
+class ChatMessage(BaseModelWithoutID):
     id = fields.IntField(pk=True)
-    session = fields.ForeignKeyField("models.ChatSession", related_name="messages")
+    session = fields.ForeignKeyField("models.ChatSession", related_name="chat_messages")
     sender = fields.CharField(max_length=10)
-    content = fields.TextField()
-    created_at = fields.DatetimeField(auto_now_add=True)
-    initial = fields.BooleanField(default=False)
-    # input_tokens = fields.IntField(null=True, default=0)
-    # output_tokens = fields.IntField(null=True, default=0)
-    # total_tokens = fields.IntField(null=True, default=0)
+    content = fields.TextField(null=True)
+    embedding = VectorField(vector_size=settings.EMBEDDING_DIMENSIONS, null=True)
+    is_relevant = fields.BooleanField(default=True)
+     
 
     class Meta:
         table = "messages"
 
-
-class ChatDocument(BaseModelWithoutID):
-    id = fields.UUIDField(primary_key=True)
-    chat = fields.ForeignKeyField("models.ChatSession", related_name="chat_documents")
-    full_text = fields.TextField()
-    document_url = fields.TextField()
-    name = fields.CharField(max_length=255)
-    size = fields.IntField()
-    extracted_page_count = fields.IntField(default=0)
-
-    class Meta:
-        table = "chat_documents"
-
-
-class DocumentChunk(BaseModelWithoutID):
+class GeneratedReport(BaseModelWithoutID):
     id = fields.IntField(pk=True)
-    document = fields.ForeignKeyField("models.ChatDocument", related_name="chunks")
+    title = fields.TextField(null=True)
+    session = fields.ForeignKeyField("models.ChatSession", related_name="generated_reports")
+    user = fields.ForeignKeyField("models.User", related_name="generated_reports")
     content = fields.TextField()
-    embedding = VectorField(vector_size=settings.OPENAI_VECTOR_SIZE)
+    message_id=fields.CharField(max_length=255)
 
     class Meta:
-        table = "document_chat_chunks"
+        table = "ai_generated_reports"
 
+
+class ChatImage(BaseModelWithoutID):
+    id = fields.IntField(pk=True)
+    message = fields.ForeignKeyField("models.ChatMessage", related_name="chat_images")
+    img_base64 = fields.TextField()
+    file_type = fields.CharField(max_length=10, null=True)
+    meta_data = fields.JSONField(null=True)
+    filename=fields.TextField(null=True)
+    s3_url = fields.TextField()
+    is_relevant = fields.BooleanField(default=True)
+
+    class Meta:
+        table = "images"
+
+    class PydanticMeta:
+        exclude = ("img_base64",)
+
+    
+class UserUploadedFile(BaseModelWithoutID):
+    id = fields.IntField(pk=True)
+    message = fields.ForeignKeyField("models.ChatMessage", related_name="user_uploaded_files", null=True)
+    user = fields.ForeignKeyField("models.User", related_name="uploaded_files")
+    file_name = fields.CharField(max_length=255)
+    file_type = fields.CharField(max_length=10)
+    file_size = fields.IntField()
+    file_url = fields.TextField()
+
+    class Meta:
+        table = "uploaded_files"
+
+    class PydanticMeta:
+        exclude = ("user", "message")
 
 class Usage(BaseModelWithoutID):
     id = fields.IntField(pk=True)
-    user = fields.ForeignKeyField("models.User", related_name="page_usages")
+    usage_type =fields.CharField(max_length=10)
+    user = fields.ForeignKeyField("models.User", related_name="usage")
     usage_count = fields.IntField(default=1)
     source = fields.CharField(max_length=100)
-    is_message = fields.BooleanField(default=False)
 
     class Meta:
         table = "usages"

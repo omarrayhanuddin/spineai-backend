@@ -1,26 +1,50 @@
 [
   {
-    "name": "Free",
-    "description": "Always Free Plan. Ideal for trying out.",
+    "name": "0.00",
+    "description": "Premium Plan",
     "price": 0.00,
-    "stripe_price_id": "price_1RVFP4FsU5rS4Gm9EJ3iTOT0"
+    "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL1",
+    "chat_mode":"basic",
+    "message_limit": 20,
+    "image_limit": 2,
+    "file_limit": 1,
+    "weekly_reminder": false,
+    "treatment_plan": false
   },
   {
-    "name": "Basic",
-    "description": "Basic Features for regular personal use.",
-    "price": 19.99,
-    "stripe_price_id": "price_1RVFK7FsU5rS4Gm9WQOfrfxV"
+    "name": "9.99",
+    "description": "Starter",
+    "price": 9.99,
+    "stripe_price_id": "price_1Rn2mRFjPe0daNEdYLLKBlXu",
+    "chat_mode":"basic",
+    "message_limit": 100,
+    "image_limit": 5,
+    "file_limit": 3,
+    "weekly_reminder": false,
+    "treatment_plan": false
   },
   {
-    "name": "Professional",
-    "description": "Advanced Features for heavy individual or light business use.",
+    "name": "39.99",
+    "description": "Pro",
     "price": 39.99,
-    "stripe_price_id": "price_1RVFYFFsU5rS4Gm9SjI51gdn"
+    "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL",
+    "chat_mode":"pro",
+    "message_limit": 250,
+    "image_limit": 20,
+    "file_limit": 7,
+    "weekly_reminder": true,
+    "treatment_plan": false
   },
   {
-    "name": "Enterprise",
-    "description": "Comprehensive Features for teams and extensive operations.",
-    "price": 69.99,
-    "stripe_price_id": "price_1RVFdLFsU5rS4Gm932AJ53zt"
+    "name": "99.99",
+    "description": "Elite",
+    "price": 99.99,
+    "stripe_price_id": "price_1Rn2npFjPe0daNEdBtVYGnAR",
+    "chat_mode":"advanced",
+    "message_limit":1000000,
+    "image_limit": 35,
+    "file_limit": 20,
+    "weekly_reminder": true,
+    "treatment_plan": true
   }
 ]

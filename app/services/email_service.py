@@ -16,7 +16,7 @@ async def send_email(subject: str, recipient: str, template_name: str, context: 
     context["current_year"] = current_year
     template = template_env.get_template(template_name)
     html_content = template.render(context)
-    sender_name = "FinDocAi"
+    sender_name = "SpineAi"
     # Create the email message
     message = MIMEMultipart("alternative")
     message["From"] = f"{sender_name} <{settings.FROM_EMAIL}>\n"

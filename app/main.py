@@ -1,10 +1,9 @@
 from tortoise import Tortoise
 from fastapi import FastAPI
 from app.db.config import init_db
-from app.api.v1 import user, chat, payment, feedback
+from app.api.v1 import user, chat, payment, notification, transcribe, treatment_plan, admin
 from contextlib import asynccontextmanager
 from httpx import AsyncClient as HttpxAsyncClient
-from mistralai import Mistral
 from app.core.config import settings
 from openai import AsyncClient as OpenAiAsyncClient
 from fastapi.middleware.cors import CORSMiddleware
@@ -77,7 +76,7 @@ async def create_or_update_plans_from_file(filepath: Path = "stage_plans.json"):
             f"An unexpected error occurred while reading plans file '{filepath}': {e}"
         )
         raise
-
+    await Plan.all().delete()
     for plan_data in plans:
         try:
             plan, created = await Plan.get_or_create(
@@ -102,19 +101,22 @@ async def setup_pgvector_hnsw():
         logger.info("Ensured 'vector' extension is enabled for PostgreSQL.")
         await conn.execute_script(
             """
-            CREATE INDEX IF NOT EXISTS document_chat_chunks_embedding_hnsw_idx
-            ON document_chat_chunks
+            CREATE INDEX IF NOT EXISTS messages_embedding_hnsw_idx
+            ON messages
             USING hnsw (embedding vector_cosine_ops)
             WITH (m = 16, ef_construction = 64);
             """
         )
         logger.info(
-            "Ensured HNSW index on 'document_chat_chunks.embedding' is created."
+            "Ensured HNSW index on 'messages.embedding' is created."
         )
     except Exception as e:
         logger.critical(f"Failed to set up pgvector HNSW index: {e}")
         raise
 
+async def update_user_plan():
+    from app.models.user import User
+    await User.all().update(current_plan="price_1Rn2npFjPe0daNEdBtVYGnAR")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -123,15 +125,15 @@ async def lifespan(app: FastAPI):
     try:
         logger.info("Application lifespan startup initiated.")
         # await run_aerich_upgrade()
-        # await setup_pgvector_hnsw()
+        await setup_pgvector_hnsw()
         await create_or_update_plans_from_file()
+        # await update_user_plan()
 
-        # app.state.mistral_client = Mistral(settings.MISTRAL_API_KEY)
-        # app.state.openai_client = OpenAiAsyncClient(api_key=settings.OPENAI_API_KEY)
+        app.state.openai_client = OpenAiAsyncClient(api_key=settings.OPENAI_API_KEY)
         app.state.httpx_client = HttpxAsyncClient()
         app.state.stripe_client = StripeClient(api_key=settings.STRIPE_API_KEY)
 
-        logger.info("External clients (Mistral, OpenAI, HTTPX, Stripe) initialized.")
+        logger.info("External clients (OpenAI, HTTPX, Stripe) initialized.")
 
         yield
     except Exception as e:
@@ -144,7 +146,7 @@ async def lifespan(app: FastAPI):
         logger.info("Application lifespan shutdown completed.")
 
 
-app = FastAPI(title="FinDocAi Backend APIs", lifespan=lifespan)
+app = FastAPI(title="SpineAi Backend APIs", lifespan=lifespan)
 
 origins = ["*"]
 app.add_middleware(
@@ -156,12 +158,15 @@ app.add_middleware(
 )
 logger.info("CORS middleware configured.")
 
-
 init_db(app)
 logger.info("Database initialized with Tortoise ORM.")
 
 app.include_router(user.router)
-# app.include_router(chat.router)
-# app.include_router(payment.router)
+app.include_router(chat.router)
+app.include_router(payment.router)
+app.include_router(notification.router)
+app.include_router(transcribe.router)
+app.include_router(treatment_plan.router)
+app.include_router(admin.router)
 # app.include_router(feedback.router)
 logger.info("API routers included: user, chat, payment, feedback.")

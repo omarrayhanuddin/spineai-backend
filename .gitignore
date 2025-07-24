@@ -11,7 +11,7 @@ wheels/
 .venv
 *.env
 .env.example
-Extra
-Extra_Tests
-run
+Extras/*
+Extra_Tests/*
+.vscode
 
