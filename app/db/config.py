@@ -12,7 +12,7 @@ TORTOISE_ORM = {
                 "app.models.payment",
                 "app.models.notification",
                 "app.models.treatment_plan",
-                # "app.models.feedback",
+                "app.models.communication",
                 "aerich.models",
             ],
             "default_connection": "default",
