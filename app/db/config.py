@@ -13,6 +13,7 @@ TORTOISE_ORM = {
                 "app.models.notification",
                 "app.models.treatment_plan",
                 "app.models.communication",
+                "app.models.product",
                 "aerich.models",
             ],
             "default_connection": "default",

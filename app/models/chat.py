@@ -12,8 +12,10 @@ class ChatSession(BaseModelWithoutID):
     image_summary = fields.JSONField(null=True)
     detected_region = fields.CharField(max_length=255, null=True)
     recommendations = fields.JSONField(null=True)
+    suggested_product_tags = fields.JSONField(null=True)
     recommendations_notified_at = fields.DatetimeField(null=True)
     is_diagnosed = fields.BooleanField(default=False)
+
 
 
     class Meta:

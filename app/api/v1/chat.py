@@ -1,4 +1,4 @@
-import base64, os, json, logging, asyncio
+import base64, os, json, logging
 from openai import AsyncClient
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status, Form
 from app.api.dependency import (
@@ -7,6 +7,7 @@ from app.api.dependency import (
     check_subscription_active,
 )
 from app.tasks.chat import create_treatment_per_session
+from app.tasks.product import get_ai_tags_per_session
 from app.models.user import User
 from app.models.chat import (
     ChatSession,
@@ -353,6 +354,7 @@ async def send_session_v2(
         await session.refresh_from_db()
         await session.treatment_plans.all().delete()
         create_treatment_per_session.delay(session_id)
+        get_ai_tags_per_session.delay(session_id)
     else:
         await ChatSession.filter(id=session_id).update(is_diagnosed=False)
     if backend.get("images_summary") and not backend.get("multiple_region_detected"):
