@@ -43,7 +43,7 @@ class User(BaseModelWithoutID):
         if self.current_plan not in (None, ""):
             plan = await Plan.get_or_none(stripe_price_id=self.current_plan)
         else:
-            plan = await Plan.get_or_none(plan_name="0.00")
+            plan = await Plan.get_or_none(name="0.00")
         if not plan:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
