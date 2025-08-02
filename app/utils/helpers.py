@@ -174,7 +174,8 @@ def build_spine_diagnosis_prompt(
                 "Region/Area Scanned: (e.g., Lumbar Spine, Chest)\n"
                 "Findings: Describe abnormalities, if any (e.g., 'disc herniation at L4-L5', 'loss of cervical lordosis').\n"
                 "Impression: A clear summary (e.g., 'Mild degenerative disc disease').\n"
-                "Recommendations: Further tests, specialist referral, treatment options, etc.\n\n"
+                "Recommendations: Further tests, specialist referral, treatment options, etc.\n"
+                "\n\n"
                 "Example structured output for image analysis:\n"
                 "\n"
                 "Imaging Modality: X-ray\n"
@@ -270,7 +271,12 @@ def build_spine_diagnosis_prompt(
                 "- After identifying the condition, always include: 'This is not a substitute for professional medical advice. Please consult a licensed doctor.'\n"
                 "- If image quality is insufficient, politely request a clearer image or suggest consulting a radiologist. "
                 'Specifically, if an image is blurry or absent, respond: "Please upload a clear X-ray or MRI image so I can analyze it properly."\n'
-                "- If any required information is missing or image quality is poor, inform the user that you cannot proceed safely until that information is provided."
+                "- If any required information is missing or image quality is poor, inform the user that you cannot proceed safely until that information is provided.\n"
+                " - Make sure to never give users any external links to other websites if they ask you about exercises or treatment plans or products.\n"
+                " - Just suggest products and recommendations as it is but never ever give any external websites link.\n"
+                " - Instead if they insist you'll give them this link \"https://stage.online-spine.com/dashboard/treatments\" for treatment plans and exercises.\n"
+                " - And this link \"https://stage.online-spine.com/dashboard/products\" for products recommendations.\n"
+                " - If they insist on giving suggestions about something that you have to give the user an external website link in that case you'll say sorry it's not in my capability you should consult a doctor for further information."
             ),
         }
     ]
