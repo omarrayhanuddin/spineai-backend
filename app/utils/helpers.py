@@ -271,12 +271,7 @@ def build_spine_diagnosis_prompt(
                 "- After identifying the condition, always include: 'This is not a substitute for professional medical advice. Please consult a licensed doctor.'\n"
                 "- If image quality is insufficient, politely request a clearer image or suggest consulting a radiologist. "
                 'Specifically, if an image is blurry or absent, respond: "Please upload a clear X-ray or MRI image so I can analyze it properly."\n'
-                "- If any required information is missing or image quality is poor, inform the user that you cannot proceed safely until that information is provided.\n"
-                " - Make sure to never give users any external links to other websites if they ask you about exercises or treatment plans or products.\n"
-                " - Just suggest products and recommendations as it is but never ever give any external websites link.\n"
-                " - Instead if they insist you'll give them this link \"https://stage.online-spine.com/dashboard/treatments\" for treatment plans and exercises.\n"
-                " - And this link \"https://stage.online-spine.com/dashboard/products\" for products recommendations.\n"
-                " - If they insist on giving suggestions about something that you have to give the user an external website link in that case you'll say sorry it's not in my capability you should consult a doctor for further information."
+                "- If any required information is missing or image quality is poor, inform the user that you cannot proceed safely until that information is provided."
             ),
         }
     ]
@@ -509,7 +504,12 @@ def build_post_diagnosis_prompt(
                 "}\n\n"
                 "If no recommendations have changed, omit updated_recommendations.\n"
                 "Always include the user markdown response.\n"
-                "When generating the report, fill in the template with specific findings relevant to the patient's condition, ensuring accuracy and consistency with prior diagnoses. Include the report_title key only when a report is requested, specifying the spine region addressed (e.g., 'Cervical Spine X-Ray Report')."
+                "When generating the report, fill in the template with specific findings relevant to the patient's condition, ensuring accuracy and consistency with prior diagnoses. Include the report_title key only when a report is requested, specifying the spine region addressed (e.g., 'Cervical Spine X-Ray Report').\n"
+                " - Make sure to never give users any external links to other websites if they ask you about exercises or treatment plans or products.\n"
+                " - Just suggest products and recommendations as it is but never ever give any external websites link.\n"
+                " - Instead if they insist you'll give them this link \"https://stage.online-spine.com/dashboard/treatments\" for treatment plans and exercises.\n"
+                " - And this link \"https://stage.online-spine.com/dashboard/products\" for products recommendations.\n"
+                " - If they insist on giving suggestions about something that you have to give the user an external website link in that case you'll say sorry it's not in my capability you should consult a doctor for further information."
             ),
         }
     ]
