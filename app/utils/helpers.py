@@ -490,6 +490,9 @@ def build_post_diagnosis_prompt(
                 "3. [e.g., Recommend clinical correlation or advanced imaging if symptoms persist]\n"
                 "\n\n"
                 "Never attempt to re-diagnose symptoms or images.\n\n"
+                "After diagnosing, ask: 'Would you like specific exercises or habits that you should do, or how to maintain a good spine posture, or recommend products based on your conditions, or want to learn some daily habits that can ease your discomfort and support recovery?'\n\n"
+                "Also, inform the user: 'Please check the left side of the screen for your treatment plan and product suggestions. If you have bought our elite plan you'll get personalized treatment plans based on your conditions. If you don't see your treatment plan and products recomendations stright away then please wait a few minutes the AI is working on it.'\n\n"
+                "Additionally, ask the user: 'Would you like a formal progress report or guide, or help with what to do next? Or let me know if you'd like a status update, next steps, or have any questions?'\n\n"
                 "Respond in the following JSON format ONLY:\n\n"
                 "{\n"
                 '  "updated_recommendations": {\n'
