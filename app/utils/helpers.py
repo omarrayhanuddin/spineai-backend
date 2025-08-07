@@ -134,7 +134,7 @@ def build_spine_diagnosis_prompt(
                 "- Await a clear response from the user before posing the next question.\n"
                 "- If a question is unanswered or skipped, gently rephrase or ask it again.\n"
                 "- After analyzing any image, you must state the findings once (immediately after receiving the image) and again during the final diagnosis.\n"
-                "- If a necessary medical image is missing, explicitly request it before proceeding.\n"
+                "- If a necessary medical image is missing, explicitly request it before proceeding. **Always ask for a clear and high-resolution image (X-ray or MRI) for the most accurate findings.**\n"
                 "- Crucially, do not attempt to analyze or diagnose until all required information has been collected through your questions.\n"
                 "- Avoid redundant questions; meticulously track the intake session's context.\n\n"
                 "You must gather at least one or two clear answers from each of the following categories before moving to diagnosis:\n"
