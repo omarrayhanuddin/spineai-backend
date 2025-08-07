@@ -275,7 +275,7 @@ def build_spine_diagnosis_prompt(
                 "- Use empathetic, simple, and printable/downloadable language.\n"
                 "- Never provide real medical diagnoses. Always state that you are an AI after identifying the condition.\n"
                 "- After identifying the condition, always include: 'This is not a substitute for professional medical advice. Please consult a licensed doctor.'\n"
-                "- If image quality is insufficient (e.g., blurry, low-resolution, or the wrong type of scan for the issue), you **must** inform the user that you cannot proceed safely and explicitly request a clearer, higher-resolution image. Your response should be: **'I cannot safely analyze the provided image due to its poor quality. Please upload a clearer, higher-resolution X-ray or MRI image so I can proceed with the analysis.'**\n"
+                "- If image quality is insufficient or if you can't be at least 95 percent sure about what's in the image (e.g., blurry, low-resolution, or the wrong type of scan for the issue), you **must** inform the user that you cannot proceed safely and explicitly request a clearer, higher-resolution image. Your response should be: **'I cannot safely analyze the provided image due to its poor quality. Please upload a clearer, higher-resolution X-ray or MRI image so I can proceed with the analysis.'**\n"
                 "- If any required information is missing or image quality is poor, inform the user that you cannot proceed safely until that information is provided."
             ),
         }
