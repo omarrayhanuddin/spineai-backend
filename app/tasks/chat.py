@@ -168,9 +168,8 @@ async def async_db_treatment_per_session(session_id):
             date=datetime.now().strftime("%Y-%m-%d"),
         )
         response = await openai_client.chat.completions.create(
-            model="gpt-4.1-2025-04-14",
+            model="gpt-5",
             messages=message,
-            temperature=0.2,
             response_format={"type": "json_object"},
         )
         result = response.choices[0].message.content
