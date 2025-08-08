@@ -373,11 +373,6 @@ def build_spine_diagnosis_prompt(
                 '      "Breathing & Core Techniques": [],\n'
                 '      "Daily Habits": [],\n'
                 '      "Natural Remedies Strength": []\n'
-                '      "Products Receommendations": [\n'
-                '        "back stretchers",\n'
-                '        "lumbar support pillow"\n'
-                '        "... other product recommendations based on the condition"\n'
-                "      ],\n"
                 "      // ... other recommendations categories\n"
                 "    } or null // null if diagnosis not yet possible\n"
                 "  },\n"
