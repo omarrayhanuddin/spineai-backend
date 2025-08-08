@@ -374,18 +374,14 @@ def build_spine_diagnosis_prompt(
                 '      "Daily Habits": [],\n'
                 '      "Natural Remedies Strength": []\n'
                 "      // ... other recommendations categories\n"
-                "    } or null, // null if diagnosis not yet possible\n"
-                '    "product_recommendations": [\n'
-                '       "back stretchers",\n'
-                '       "lumbar support pillow"\n'
-                "    ] or null // null if diagnosis not yet possible\n"
+                "    } or null // null if diagnosis not yet possible\n"
                 "  },\n"
                 '  "user": "<markdown explanation and questions for the patient>"\n'
                 "}\n"
                 "\n\n"
                 "Crucially, for the 'findings' section, aim to use the specific phrases provided in the system prompt. "
                 "If a finding is clearly observed but not on the list, you may describe it concisely. "
-                "Leave 'findings', 'recommendations', and 'product_recommendations' as null if identifying the condition isn't yet possible. "
+                "Leave 'findings' and 'recommendations' as null if identifying the condition isn't yet possible. "
                 "The 'session_title' should also be null if the condition has not been identified."
             ),
         }
@@ -403,6 +399,7 @@ def build_post_diagnosis_prompt(
     recommendations: Dict,
     previous_messages: List[Dict],  # [{"sender": "user"/"ai", "text": str}]
     current_message: Dict,  # {"id": int, "text": str}
+    product_recommendations: Optional[List[Dict]] = None # New parameter for product recommendations
 ) -> List[Dict]:
     today = datetime.now().strftime("%Y-%m-%d")
     """
@@ -511,6 +508,10 @@ def build_post_diagnosis_prompt(
                 '    "diet": ["..."],\n'
                 '    "followup": "..."\n'
                 "  },\n"
+                '  "product_recommendations": [\n'
+                '    "product_tag1",\n'
+                '    "product_tag2"\n'
+                "  ] or null,\n"
                 '  "user": "### Markdown-formatted response to show the patient",If a report is requested, this field MUST contain the full markdown-formatted report as per the Spine X-Ray Report Template. Otherwise, provide a conversational response.",\n'
                 '  "report_title": "[e.g., Cervical Spine X-Ray Report, Thoracic Spine X-Ray Report, or Lumbar Spine X-Ray Report]",\n'
                 '  "report": "### Markdown-formatted ** Only The Report Part** to store in the database if user asked for report else omit this key"\n'
@@ -554,6 +555,16 @@ def build_post_diagnosis_prompt(
             + format_recommendations_md(recommendations),
         }
     )
+
+    # 📦 Product Recommendations
+    if product_recommendations:
+        user_message_block["content"].append(
+            {
+                "type": "text",
+                "text": "\n### 🛍 Product Recommendations:\n"
+                + json.dumps(product_recommendations, indent=2),
+            }
+        )
 
     # 💬 Previous related memory messages
     if previous_messages:
