@@ -374,14 +374,18 @@ def build_spine_diagnosis_prompt(
                 '      "Daily Habits": [],\n'
                 '      "Natural Remedies Strength": []\n'
                 "      // ... other recommendations categories\n"
-                "    } or null // null if diagnosis not yet possible\n"
+                "    } or null, // null if diagnosis not yet possible\n"
+                '    "product_recommendations": [\n'
+                '       "back stretchers",\n'
+                '       "lumbar support pillow"\n'
+                "    ] or null // null if diagnosis not yet possible\n"
                 "  },\n"
                 '  "user": "<markdown explanation and questions for the patient>"\n'
                 "}\n"
                 "\n\n"
                 "Crucially, for the 'findings' section, aim to use the specific phrases provided in the system prompt. "
                 "If a finding is clearly observed but not on the list, you may describe it concisely. "
-                "Leave 'findings' and 'recommendations' as null if identifying the condition isn't yet possible. "
+                "Leave 'findings', 'recommendations', and 'product_recommendations' as null if identifying the condition isn't yet possible. "
                 "The 'session_title' should also be null if the condition has not been identified."
             ),
         }
