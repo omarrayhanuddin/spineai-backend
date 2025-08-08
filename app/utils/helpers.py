@@ -373,6 +373,11 @@ def build_spine_diagnosis_prompt(
                 '      "Breathing & Core Techniques": [],\n'
                 '      "Daily Habits": [],\n'
                 '      "Natural Remedies Strength": []\n'
+                '      "Products Receommendations": [\n'
+                '        "back stretchers",\n'
+                '        "lumbar support pillow"\n'
+                '        "... other product recommendations based on the condition"\n'
+                "      ],\n"
                 "      // ... other recommendations categories\n"
                 "    } or null // null if diagnosis not yet possible\n"
                 "  },\n"
@@ -399,7 +404,6 @@ def build_post_diagnosis_prompt(
     recommendations: Dict,
     previous_messages: List[Dict],  # [{"sender": "user"/"ai", "text": str}]
     current_message: Dict,  # {"id": int, "text": str}
-    product_recommendations: Optional[List[Dict]] = None # New parameter for product recommendations
 ) -> List[Dict]:
     today = datetime.now().strftime("%Y-%m-%d")
     """
@@ -508,10 +512,6 @@ def build_post_diagnosis_prompt(
                 '    "diet": ["..."],\n'
                 '    "followup": "..."\n'
                 "  },\n"
-                '  "product_recommendations": [\n'
-                '    "product_tag1",\n'
-                '    "product_tag2"\n'
-                "  ] or null,\n"
                 '  "user": "### Markdown-formatted response to show the patient",If a report is requested, this field MUST contain the full markdown-formatted report as per the Spine X-Ray Report Template. Otherwise, provide a conversational response.",\n'
                 '  "report_title": "[e.g., Cervical Spine X-Ray Report, Thoracic Spine X-Ray Report, or Lumbar Spine X-Ray Report]",\n'
                 '  "report": "### Markdown-formatted ** Only The Report Part** to store in the database if user asked for report else omit this key"\n'
@@ -555,16 +555,6 @@ def build_post_diagnosis_prompt(
             + format_recommendations_md(recommendations),
         }
     )
-
-    # 📦 Product Recommendations
-    if product_recommendations:
-        user_message_block["content"].append(
-            {
-                "type": "text",
-                "text": "\n### 🛍 Product Recommendations:\n"
-                + json.dumps(product_recommendations, indent=2),
-            }
-        )
 
     # 💬 Previous related memory messages
     if previous_messages:
