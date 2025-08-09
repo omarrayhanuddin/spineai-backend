@@ -210,7 +210,6 @@ async def send_session_v2(
         response = await openai_client.chat.completions.create(
             model="gpt-5",
             messages=messages,
-            temperature=0.2,
             response_format={"type": "json_object"},
         )
         await Usage.bulk_create(total_usage)
@@ -336,7 +335,6 @@ async def send_session_v2(
     response = await openai_client.chat.completions.create(
         model="gpt-5",
         messages=messages,
-        temperature=0.2,
         response_format={"type": "json_object"},
     )
 
