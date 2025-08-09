@@ -23,7 +23,6 @@ async def async_db_get_ai_recommendation(session_id):
         response = await openai_client.chat.completions.create(
             model="gpt-5",
             messages=message,
-            temperature=0.2,
             response_format={"type": "json_object"},
         )
         result = response.choices[0].message.content
