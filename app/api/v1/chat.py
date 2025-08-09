@@ -35,6 +35,9 @@ from datetime import datetime, timezone
 from app.utils import helpers as premium_helpers
 from app.utils import free_helpers
 
+from app.tasks.product import async_db_get_ai_recommendation
+from app.models.product import Product
+
 logger = logging.getLogger(__name__)
 
 
@@ -127,6 +130,11 @@ async def convert_image_to_base64(file: UploadFile) -> str:
     return f"data:{mime_type};base64,{base64_encoded_image}", file.filename
 
 
+async def makeProductRecommendationText(session):
+    products = await Product.filter(tags__name__in=session.suggested_product_tags).offset(0).limit(3).order_by("id").distinct().values_list("name", flat = True)
+    product_str_list = [ f"*{n}\n" for n in products]
+    productMessage = """## Products Recommendations:\n"""
+    return productMessage + "".join(product_str_list)
 import time
 
 
@@ -208,8 +216,9 @@ async def send_session_v2(
             previous_messages=context_messages,
         )
         response = await openai_client.chat.completions.create(
-            model="gpt-5",
+            model="gpt-4.1",
             messages=messages,
+            temperature=0.2,
             response_format={"type": "json_object"},
         )
         await Usage.bulk_create(total_usage)
@@ -333,8 +342,9 @@ async def send_session_v2(
     print("Build Prompt Time", time.time() - build_pmt_st)
     openai_st = time.time()
     response = await openai_client.chat.completions.create(
-        model="gpt-5",
+        model="gpt-4.1",
         messages=messages,
+        temperature=0.2,
         response_format={"type": "json_object"},
     )
 
@@ -361,7 +371,8 @@ async def send_session_v2(
         await session.refresh_from_db()
         await session.treatment_plans.all().delete()
         create_treatment_per_session.delay(session_id)
-        get_ai_tags_per_session.delay(session_id)
+        # get_ai_tags_per_session.delay(session_id)
+        async_db_get_ai_recommendation(session_id)
     else:
         await ChatSession.filter(id=session_id).update(is_diagnosed=False)
     if backend.get("images_summary") and not backend.get("multiple_region_detected"):
@@ -385,6 +396,14 @@ async def send_session_v2(
         "message_id": ai_chat.id,
         "is_diagnosed": backend.get("is_diagnosed", False),
     }
+    if backend.get("is_diagnosed"):
+        await ChatMessage.create(
+        session_id=session_id,
+        sender="system",
+        content=await makeProductRecommendationText(session),
+        is_relevant=False if session.is_diagnosed else True,
+    )
+        data_response["product_recommendation"] = await makeProductRecommendationText
     if session.title:
         data_response["session_title"] = session.title
     if backend.get("prompt_new_session"):
