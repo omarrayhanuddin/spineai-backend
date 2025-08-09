@@ -338,53 +338,60 @@ def build_spine_diagnosis_prompt(
     # 📤 Response instruction
     user_message_block["content"].append(
         {
-            "type": "text",
-            "text": (
-                "\n## Output Format\n"
-                "Respond ONLY in this JSON format:\n\n"
-                "json\n"
-                "{\n"
-                '  "backend": {\n'
-                '    "session_title": "null" or "A descriptive title based on the overall user\'s condition (e.g., Lumbar Spine Degeneration)",\n'
-                '    "is_diagnosed": true or false,\n'
-                '    "irrelevant_message_ids": [],\n'
-                '    "irrelevant_image_ids": [],\n'
-                '    "multiple_region_detected": true or false,\n'
-                '    "images_summary": [\n'
-                '      "Image 1 (X-ray, Cervical Spine): Overall impression: Mild degenerative changes. Findings: Loss of normal cervical lordosis, mild C5-C6 disc space narrowing. Keywords: lordosis, disc degeneration.",\n'
-                '      "Image 2 (MRI, Lumbar Spine): Overall impression: Significant L4-L5 disc herniation. Findings: Large central disc extrusion at L4-L5, moderate spinal canal stenosis. Keywords: herniation, stenosis, lumbar, MRI."\n'
-                "    ], // Array of detailed string summaries, each representing one image summary.\n"
-                '    "findings": {\n'
-                '      "Cervical Spine (Neck) Findings": ["Loss of cervical lordosis", "Facet joint hypertrophy"],\n'
-                '      "Thoracic Spine (Mid-Back) Findings": [],\n'
-                '      "Lumbar Spine (Lower Back) Findings": ["Loss or reversal of lumbar lordosis", "Scoliosis"]\n'
-                "      // ... other spine section findings as observed, prioritizing terms from the system prompt\n"
-                "    } or null, // null if diagnosis not yet possible\n"
-                '    "recommendations": {\n'
-                '      "Exercise": [\n'
-                '        "Strengthening exercises for the back muscles",\n'
-                '        "Gentle stretching for improved flexibility"\n'
-                "      ],\n"
-                '      "Pain Relief": [],\n'
-                '      "Ice & Heat": [],\n'
-                '      "Inflammation Management": [],\n'
-                '      "Lifestyle Adjustments": [],\n'
-                '      "Therapies": [],\n'
-                '      "Breathing & Core Techniques": [],\n'
-                '      "Daily Habits": [],\n'
-                '      "Natural Remedies Strength": []\n'
-                "      // ... other recommendations categories\n"
-                "    } or null // null if diagnosis not yet possible\n"
-                "  },\n"
-                '  "user": "<markdown explanation and questions for the patient>"\n'
-                "}\n"
-                "\n\n"
-                "Crucially, for the 'findings' section, aim to use the specific phrases provided in the system prompt. "
-                "If a finding is clearly observed but not on the list, you may describe it concisely. "
-                "Leave 'findings' and 'recommendations' as null if identifying the condition isn't yet possible. "
-                "The 'session_title' should also be null if the condition has not been identified."
-            ),
-        }
+  "type": "text",
+  "text": (
+    "\n## Output Format\n"
+    "Respond ONLY in this JSON format:\n\n"
+    "json\n"
+    "{\n"
+    ' "backend": {\n'
+    ' "session_title": "null" or "A descriptive title based on the overall user\'s condition (e.g., Lumbar Spine Degeneration)",\n'
+    ' "is_diagnosed": true or false,\n'
+    ' "irrelevant_message_ids": [],\n'
+    ' "irrelevant_image_ids": [],\n'
+    ' "multiple_region_detected": true or false,\n'
+    ' "images_summary": [\n'
+    ' "Image 1 (X-ray, Cervical Spine): Overall impression: Mild degenerative changes. Findings: Loss of normal cervical lordosis, mild C5-C6 disc space narrowing. Keywords: lordosis, disc degeneration.",\n'
+    ' "Image 2 (MRI, Lumbar Spine): Overall impression: Significant L4-L5 disc herniation. Findings: Large central disc extrusion at L4-L5, moderate spinal canal stenosis. Keywords: herniation, stenosis, lumbar, MRI."\n'
+    " ], // Array of detailed string summaries, each representing one image summary.\n"
+    ' "findings": {\n'
+    ' "Cervical Spine (Neck) Findings": ["Loss of cervical lordosis", "Facet joint hypertrophy"],\n'
+    ' "Thoracic Spine (Mid-Back) Findings": [],\n'
+    ' "Lumbar Spine (Lower Back) Findings": ["Loss or reversal of lumbar lordosis", "Scoliosis"]\n'
+    " // ... other spine section findings as observed, prioritizing terms from the system prompt\n"
+    " } or null, // null if diagnosis not yet possible\n"
+    ' "recommendations": {\n'
+    ' "Exercise": [\n'
+    ' "Strengthening exercises for the back muscles",\n'
+    ' "Gentle stretching for improved flexibility"\n'
+    " ],\n"
+    ' "Pain Relief": [],\n'
+    ' "Ice & Heat": [],\n'
+    ' "Inflammation Management": [],\n'
+    ' "Lifestyle Adjustments": [],\n'
+    ' "Therapies": [],\n'
+    ' "Breathing & Core Techniques": [],\n'
+    ' "Daily Habits": [],\n'
+    ' "Natural Remedies Strength": []\n'
+    " // ... other recommendations categories\n"
+    " } or null, // null if diagnosis not yet possible\n"
+    ' "products": [\n'
+    ' "Lumbar support pillow",\n'
+    ' "Adjustable ergonomic chair",\n'
+    ' "Cold therapy gel pack",\n'
+    ' "Posture corrector brace"\n'
+    " ] or null // null if diagnosis not yet possible\n"
+    " },\n"
+    ' "user": "<markdown explanation and questions for the patient>"\n'
+    "}\n"
+    "\n\n"
+    "Crucially, for the 'findings' section, aim to use the specific phrases provided in the system prompt. "
+    "If a finding is clearly observed but not on the list, you may describe it concisely. "
+    "Leave 'findings', 'recommendations', and 'products' as null if identifying the condition isn't yet possible. "
+    "The 'session_title' should also be null if the condition has not been identified."
+  )
+}
+
     )
 
     # 🧩 Add full user message block to messages list
