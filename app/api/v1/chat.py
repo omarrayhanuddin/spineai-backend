@@ -208,7 +208,7 @@ async def send_session_v2(
             previous_messages=context_messages,
         )
         response = await openai_client.chat.completions.create(
-            model="gpt-4.1",
+            model="gpt-5",
             messages=messages,
             temperature=0.2,
             response_format={"type": "json_object"},
@@ -334,7 +334,7 @@ async def send_session_v2(
     print("Build Prompt Time", time.time() - build_pmt_st)
     openai_st = time.time()
     response = await openai_client.chat.completions.create(
-        model="gpt-4.1",
+        model="gpt-5",
         messages=messages,
         temperature=0.2,
         response_format={"type": "json_object"},
