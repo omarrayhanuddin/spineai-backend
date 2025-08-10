@@ -372,7 +372,7 @@ async def send_session_v2(
         await session.treatment_plans.all().delete()
         create_treatment_per_session.delay(session_id)
         # get_ai_tags_per_session.delay(session_id)
-        async_db_get_ai_recommendation(session_id)
+        await async_db_get_ai_recommendation(session_id)
     else:
         await ChatSession.filter(id=session_id).update(is_diagnosed=False)
     if backend.get("images_summary") and not backend.get("multiple_region_detected"):
@@ -397,13 +397,8 @@ async def send_session_v2(
         "is_diagnosed": backend.get("is_diagnosed", False),
     }
     if backend.get("is_diagnosed"):
-        await ChatMessage.create(
-        session_id=session_id,
-        sender="system",
-        content=await makeProductRecommendationText(session),
-        is_relevant=False if session.is_diagnosed else True,
-    )
-        data_response["product_recommendation"] = await makeProductRecommendationText
+        ai_chat.content = ai_chat.content + "\n" + await makeProductRecommendationText()
+        await ai_chat.save()
     if session.title:
         data_response["session_title"] = session.title
     if backend.get("prompt_new_session"):
