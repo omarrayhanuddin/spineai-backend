@@ -29,7 +29,7 @@ async def get_all_products(limit: int = 100, offset: int = 0, session_id:str = N
                 status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
             )
         tags = session.suggested_product_tags
-        return await Product.filter(tags__name__in=tags).offset(offset).limit(limit).order_by("id").distinct()
+        return await Product.filter(tags__name__in=tags).offset(offset).limit(limit).order_by("name").distinct()
     return await Product.all().offset(offset).limit(limit)
 
 
