@@ -21,9 +21,6 @@ class ChatSession(BaseModelWithoutID):
     class Meta:
         table = "sessions"
 
-    def __str__(self):
-        return self.user.email
-
 
 class ChatMessage(BaseModelWithoutID):
     id = fields.IntField(pk=True)
