@@ -132,13 +132,13 @@ async def convert_image_to_base64(file: UploadFile) -> str:
 
 async def makeProductRecommendationText(session):
     print(session, "printing session")
-    products = await Product.filter(tags__name__in=session.suggested_product_tags).offset(0).limit(3).values_list("name", flat = True)
+    products = await Product.filter(tags__name__in=session.suggested_product_tags).offset(0).limit(3).values_list("name", flat=True)
     print(products, "printing products")
-    product_str_list = [ f"*{n}\n" for n in products]
-    if not product_str_list:
+    if not products:
         return ""
-    productMessage = """#### Products Recommendations based on your condition:\n"""
-    return productMessage + "".join(product_str_list)
+    product_string = "* " + " *".join(products)
+    productMessage = f"""#### Products Recommendations based on your condition:\n{product_string}"""
+    return productMessage
 import time
 
 
