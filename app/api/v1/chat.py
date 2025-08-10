@@ -136,8 +136,8 @@ async def makeProductRecommendationText(session):
     print(products, "printing products")
     if not products:
         return ""
-    product_string = "* " + " *".join(products)
-    productMessage = f"""#### Products Recommendations based on your condition:\n{product_string}"""
+    product_str_list = [f"* {n}" for n in products]
+    productMessage = f"""#### Products Recommendations based on your condition:\n{'\n'.join(product_str_list)}"""
     return productMessage
 import time
 
