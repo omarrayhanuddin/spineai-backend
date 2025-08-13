@@ -8,7 +8,7 @@ from tortoise.transactions import in_transaction
 from datetime import datetime, timezone
 from stripe import StripeClient, Webhook, SignatureVerificationError
 from pydantic import BaseModel
-
+from fastapi import BackgroundTasks
 
 router = APIRouter(prefix="/v1/payment", tags=["Payment Endpoints"])
 
@@ -290,3 +290,31 @@ async def stripe_webhook(
             return {"status": "success"}
 
     return {"status": "success"}
+
+@router.post("/payment/ebook")
+async def payment_ebook(
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    stripe_client: StripeClient = Depends(get_stripe_client),
+):
+    try:
+        session = await stripe_client.checkout.sessions.create_async({
+            "success_url": f"{settings.STRIPE_SUCCESS_URL}?product=ebook",
+            "cancel_url": settings.STRIPE_CANCEL_URL,
+            "payment_method_types": ["card"],
+            "line_items": [{
+                "price": settings.EBOOK_PRICE_ID,
+                "quantity": 1,
+            }],
+            "mode": "payment",
+            "customer_email": user.email,
+            "metadata": {
+                "user_id": str(user.id),
+                "product_type": "ebook"
+            }
+        })
+        
+        return {"checkout_url": session.url}
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
