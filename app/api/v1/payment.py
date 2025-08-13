@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from app.api.dependency import get_current_user, get_stripe_client, get_current_admin
 from app.models.user import User, CouponCode
 from app.models.payment import Plan, PendingEvent
@@ -40,27 +40,81 @@ async def plan_update(plan_id: str, form: PlanIn):
     return await plan.update_from_dict(form.model_dump(exclude_unset=True))
 
 
-@router.post("/stripe/create-session/{product_id}")
+async def _resolve_discounts(stripe_client: StripeClient, code: str) -> list[dict]:
+    """
+    Accepts:
+      - Human-friendly promotion code text (e.g. 'SUMMER20')
+      - Promotion code id: 'promo_...'
+      - Coupon id: 'coupon_...'
+    Returns a Stripe 'discounts' array suitable for checkout.sessions.create.
+    Raises HTTPException(400) if invalid/inactive.
+    """
+    code = (code or "").strip()
+    if not code:
+        return []
+
+    # If it's clearly a promotion code id
+    if code.startswith("promo_"):
+        try:
+            promo = await stripe_client.promotion_codes.retrieve_async(code)
+        except Exception:
+            raise HTTPException(400, "Invalid promotion code")
+        if not getattr(promo, "active", False):
+            raise HTTPException(400, "Promotion code is inactive or expired")
+        return [{"promotion_code": promo.id}]
+
+    # If it's clearly a coupon id
+    if code.startswith("coupon_"):
+        try:
+            coupon = await stripe_client.coupons.retrieve_async(code)
+        except Exception:
+            raise HTTPException(400, "Invalid coupon")
+        if not getattr(coupon, "valid", False):
+            raise HTTPException(400, "Coupon is inactive or expired")
+        return [{"coupon": coupon.id}]
+
+    # Otherwise, treat it as human-readable promotion code text
+    try:
+        promos = await stripe_client.promotion_codes.list_async(
+            {"code": code, "active": True, "limit": 1}
+        )
+    except Exception:
+        raise HTTPException(400, "Could not validate coupon/promotion code")
+    if getattr(promos, "data", []):
+        return [{"promotion_code": promos.data[0].id}]
+
+    raise HTTPException(400, "Invalid or expired coupon/promotion code")
+
+
+@router.post("/create-session")
 async def create_session(
-    product_id: str,
-    coupon_code: str = None,
+    product_name: str,
+    coupon_code: str | None = Query(default=None),
     user: User = Depends(get_current_user),
     stripe_client: StripeClient = Depends(get_stripe_client),
 ):
-    if user.stripe_customer_id is None or user.stripe_customer_id.strip() == "":
+    # Get the product_id from the product_name
+    plan = await Plan.get_or_none(name=product_name)
+    if not plan:
+        raise HTTPException(400, "Product not found")
+    product_id = plan.stripe_price_id
+
+    # Ensure Stripe customer
+    if not user.stripe_customer_id or user.stripe_customer_id.strip() == "":
         customer = await stripe_client.customers.create_async(
             {"name": user.full_name, "email": user.email}
         )
         user.stripe_customer_id = customer.id
         await user.save()
+
+    # If user already has a subscription, send them to the billing portal
     if user.subscription_id:
         session = await stripe_client.billing_portal.sessions.create_async(
-            {
-                "customer": user.stripe_customer_id,
-                "return_url": settings.STRIPE_SUCCESS_URL,
-            }
+            {"customer": user.stripe_customer_id, "return_url": settings.STRIPE_SUCCESS_URL}
         )
         return {"checkout_url": session.url}
+
+    # Build checkout params for subscription using the resolved Stripe price id
     params = {
         "success_url": settings.STRIPE_SUCCESS_URL,
         "cancel_url": settings.STRIPE_CANCEL_URL,
@@ -68,18 +122,21 @@ async def create_session(
         "line_items": [{"price": product_id, "quantity": 1}],
         "customer": user.stripe_customer_id,
     }
-    if coupon_code is not None and not user.coupon_used:
-        # and not await user.check_coupon_used(coupon_code):
-        # params["discounts"] = [{""}]
-        params["discounts"] = [{"coupon": coupon_code}]
+
+    # Only apply a discount if provided AND user hasn't used a coupon before
+    if coupon_code and not user.coupon_used:
+        params["discounts"] = await _resolve_discounts(stripe_client, coupon_code)
+
     try:
         session = await stripe_client.checkout.sessions.create_async(params=params)
     except Exception as e:
+        # Surface Stripe error to client for quick debugging
         raise HTTPException(400, str(e))
+
     return {"checkout_url": session.url}
 
 
-@router.get("/stripe/customer-portal")
+@router.get("/customer-portal")
 async def get_customer_portal(
     user: User = Depends(get_current_user),
     stripe_client: StripeClient = Depends(get_stripe_client),
@@ -88,10 +145,7 @@ async def get_customer_portal(
         raise HTTPException(400, "Stripe customer not found.")
 
     session = await stripe_client.billing_portal.sessions.create_async(
-        {
-            "customer": user.stripe_customer_id,
-            "return_url": settings.STRIPE_SUCCESS_URL,
-        }
+        {"customer": user.stripe_customer_id, "return_url": settings.STRIPE_SUCCESS_URL}
     )
     return {"portal_url": session.url}
 
@@ -109,15 +163,15 @@ async def stripe_webhook(
         event = Webhook.construct_event(payload, sig_header, webhook_secret)
     except SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid signature")
+
     event_id = event["id"]
     event_type = event["type"]
-    # Convert Stripe timestamp to UTC-aware datetime
     created_ts = datetime.fromtimestamp(event["created"], tz=timezone.utc)
     data = event["data"]["object"]
     customer_id = data.get("customer")
 
     async with in_transaction():
-        # Check for idempotency
+        # Idempotency check
         existing_event = await PendingEvent.get_or_none(id=event_id, processed=True)
         if existing_event:
             return {"status": "success"}
@@ -125,7 +179,6 @@ async def stripe_webhook(
         user = await User.get_or_none(stripe_customer_id=customer_id)
 
         if not user:
-            # Store event if user doesn't exist (e.g., customer.created not processed)
             await PendingEvent.get_or_create(
                 id=event_id,
                 defaults={
@@ -137,9 +190,8 @@ async def stripe_webhook(
             )
             return {"status": "success"}
 
-        # Check if event can be processed (timestamp > last_processed_event_ts)
+        # Skip older events
         if user.last_processed_event_ts and created_ts <= user.last_processed_event_ts:
-            # Store in PendingEvent for later processing
             await PendingEvent.get_or_create(
                 id=event_id,
                 defaults={
@@ -163,17 +215,17 @@ async def stripe_webhook(
                     .get("id")
                 )
                 period_end_ts = (
-                    data.get("items", {}).get("data", [{}])[0].get("current_period_end")
+                    data.get("items", {})
+                    .get("data", [{}])[0]
+                    .get("current_period_end")
                 )
                 current_period_end = (
                     datetime.fromtimestamp(period_end_ts, tz=timezone.utc)
                     if period_end_ts
                     else None
                 )
-                if (
-                    event_type == "customer.subscription.created"
-                    and not user.coupon_used
-                ):
+
+                if event_type == "customer.subscription.created" and not user.coupon_used:
                     user.coupon_used = True
 
                 if event_type == "customer.subscription.deleted":
@@ -209,11 +261,9 @@ async def stripe_webhook(
             elif event_type == "payment_method.attached":
                 user.has_valid_card = True
 
-            # Update last processed event timestamp and save user
             user.last_processed_event_ts = created_ts
             await user.save()
 
-            # Mark event as processed
             await PendingEvent.get_or_create(
                 id=event_id,
                 defaults={
