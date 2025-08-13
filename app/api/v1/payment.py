@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request
 from app.api.dependency import get_current_user, get_stripe_client, get_current_admin
 from app.models.user import User, CouponCode
 from app.models.payment import Plan, PendingEvent
@@ -7,9 +7,15 @@ from app.core.config import settings
 from tortoise.transactions import in_transaction
 from datetime import datetime, timezone
 from stripe import StripeClient, Webhook, SignatureVerificationError
+from pydantic import BaseModel
 
 
 router = APIRouter(prefix="/v1/payment", tags=["Payment Endpoints"])
+
+# Request model for create-session endpoint
+class CreateSessionRequest(BaseModel):
+    product_name: str
+    coupon_code: str | None = None
 
 
 @router.get("/plan/all", response_model=list[PlanOut])
@@ -88,11 +94,22 @@ async def _resolve_discounts(stripe_client: StripeClient, code: str) -> list[dic
 
 @router.post("/create-session")
 async def create_session(
-    product_name: str,
-    coupon_code: str | None = Query(default=None),
-    user: User = Depends(get_current_user),
+    request: CreateSessionRequest,
     stripe_client: StripeClient = Depends(get_stripe_client),
 ):
+    # Temporary user object for testing
+    class TempUser:
+        def __init__(self):
+            self.stripe_customer_id = None
+            self.full_name = "Test User"
+            self.email = "test@example.com"
+            self.subscription_id = None
+            self.coupon_used = False
+    
+    user = TempUser()
+    product_name = request.product_name
+    coupon_code = request.coupon_code
+
     # Get the product_id from the product_name
     plan = await Plan.get_or_none(name=product_name)
     if not plan:
@@ -105,7 +122,7 @@ async def create_session(
             {"name": user.full_name, "email": user.email}
         )
         user.stripe_customer_id = customer.id
-        await user.save()
+        # Don't save since this is a temp user
 
     # If user already has a subscription, send them to the billing portal
     if user.subscription_id:
@@ -114,7 +131,7 @@ async def create_session(
         )
         return {"checkout_url": session.url}
 
-    # Build checkout params for subscription using the resolved Stripe price id
+    # Build checkout params
     params = {
         "success_url": settings.STRIPE_SUCCESS_URL,
         "cancel_url": settings.STRIPE_CANCEL_URL,
@@ -123,14 +140,13 @@ async def create_session(
         "customer": user.stripe_customer_id,
     }
 
-    # Only apply a discount if provided AND user hasn't used a coupon before
+    # Apply discount if provided
     if coupon_code and not user.coupon_used:
         params["discounts"] = await _resolve_discounts(stripe_client, coupon_code)
 
     try:
         session = await stripe_client.checkout.sessions.create_async(params=params)
     except Exception as e:
-        # Surface Stripe error to client for quick debugging
         raise HTTPException(400, str(e))
 
     return {"checkout_url": session.url}
