@@ -5,7 +5,6 @@ from tortoise import Tortoise
 from fastapi import FastAPI
 from app.db.config import init_db
 from app.api.v1 import (
-    coupon,
     user,
     chat,
     payment,
@@ -187,5 +186,4 @@ app.include_router(treatment_plan.router)
 app.include_router(admin.router)
 app.include_router(communication.router)
 app.include_router(product.router)
-app.include_router(coupon.router)
 logger.info("API routers included: user, chat, payment, feedback.")
