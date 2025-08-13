@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = Field(default=None, env="STRIPE_WEBHOOK_SECRET")
     STRIPE_SUCCESS_URL: str = Field(default=None, env="STRIPE_SUCCESS_URL")
     STRIPE_CANCEL_URL: str = Field(default=None, env="STRIPE_CANCEL_URL")
-
+    EBOOK_PRICE_ID: str = "prod_SrUMxvCyFr2Urm"
     DATABASE_URL: str = Field(..., env=["DATABASE_URL", "DB_URL"])
     MISTRAL_API_KEY: str | None = Field(default=None, env="MISTRAL_API_KEY")
     DOCUMENT_INTELLIGENCE_API_KEY: str | None = Field(

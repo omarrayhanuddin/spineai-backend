@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 from stripe import StripeClient, Webhook, SignatureVerificationError
 from pydantic import BaseModel
 from fastapi import BackgroundTasks
+from app.services.email_service import send_email
+import random
+import string
 
 router = APIRouter(prefix="/v1/payment", tags=["Payment Endpoints"])
 
@@ -16,8 +19,11 @@ router = APIRouter(prefix="/v1/payment", tags=["Payment Endpoints"])
 class CreateSessionRequest(BaseModel):
     product_name: str
     coupon_code: str | None = None
+def generate_coupon_code(length=8):
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
-
+class EbookPurchaseRequest(BaseModel):
+    email: str | None = None
 @router.get("/plan/all", response_model=list[PlanOut])
 async def plans():
     return await Plan.all()
@@ -152,19 +158,67 @@ async def get_customer_portal(
     return {"portal_url": session.url}
 
 
+
+@router.post("/buy/ebook")
+async def buy_ebook(
+    request: EbookPurchaseRequest,
+    background_tasks: BackgroundTasks,
+    # user: User = Depends(get_current_user),
+    stripe_client: StripeClient = Depends(get_stripe_client),
+):
+    """
+    Endpoint for purchasing an ebook.
+    - Creates a Stripe checkout session
+    - Sends confirmation email with coupon after successful payment
+    """
+    try:
+        # Use authenticated user's email unless specifically overridden
+        customer_email = request.email if request.email else user.email
+        
+        # Create Stripe checkout session
+        session = await stripe_client.checkout.sessions.create_async({
+            "success_url": f"{settings.STRIPE_SUCCESS_URL}?product=ebook",
+            "cancel_url": settings.STRIPE_CANCEL_URL,
+            "payment_method_types": ["card"],
+            "line_items": [{
+                "price": settings.EBOOK_PRICE_ID,
+                "quantity": 1,
+            }],
+            "mode": "payment",
+            "customer_email": customer_email,
+            "metadata": {
+                "user_id": str(user.id),
+                "product_type": "ebook"
+            }
+        })
+        
+        return {"checkout_url": session.url}
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+
+
+
 @router.post("/webhook/stripe")
 async def stripe_webhook(
-    request: Request, stripe_client: StripeClient = Depends(get_stripe_client)
+    request: Request, 
+    background_tasks: BackgroundTasks,
+    stripe_client: StripeClient = Depends(get_stripe_client)
 ):
     # Validate webhook signature
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
-    webhook_secret = settings.STRIPE_WEBHOOK_SECRET
-
+    
     try:
-        event = Webhook.construct_event(payload, sig_header, webhook_secret)
-    except SignatureVerificationError:
-        raise HTTPException(status_code=400, detail="Invalid signature")
+        event = Webhook.construct_event(
+            payload, 
+            sig_header, 
+            settings.STRIPE_WEBHOOK_SECRET
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     event_id = event["id"]
     event_type = event["type"]
@@ -178,6 +232,49 @@ async def stripe_webhook(
         if existing_event:
             return {"status": "success"}
 
+        # Handle different event types
+        if event_type == "checkout.session.completed":
+            session = data
+            metadata = session.get("metadata", {})
+            
+            # Ebook purchase flow
+            if metadata.get("product_type") == "ebook":
+                user_email = session["customer_email"]
+                coupon_code = generate_coupon_code()
+                
+                # Send ebook confirmation email
+                background_tasks.add_task(
+                    send_email,
+                    subject="Your E-Book Purchase Confirmation",
+                    recipient=user_email,
+                    template_name="ebook_purchase.html",
+                    context={
+                        "coupon_code": coupon_code,
+                        "company_name": "SpineAi",
+                        "support_email": settings.SUPPORT_EMAIL,
+                        "discount_percentage": "20%",
+                        "current_year": datetime.now().year
+                    }
+                )
+                
+                # Create and store the coupon
+                await CouponCode.create(
+                    code=coupon_code,
+                    discount_percent=20,
+                    valid_until=datetime.now() + timedelta(days=30),
+                    email=user_email
+                )
+                
+                await PendingEvent.create(
+                    id=event_id,
+                    type=event_type,
+                    created=created_ts,
+                    payload=event,
+                    processed=True
+                )
+                return {"status": "success"}
+
+        # Existing subscription handling logic
         user = await User.get_or_none(stripe_customer_id=customer_id)
 
         if not user:
@@ -205,7 +302,7 @@ async def stripe_webhook(
             )
             return {"status": "success"}
 
-        # Process the event
+        # Process subscription events
         try:
             if event_type.startswith("customer.subscription."):
                 subscription_id = data.get("id")
@@ -291,30 +388,3 @@ async def stripe_webhook(
 
     return {"status": "success"}
 
-@router.post("/payment/ebook")
-async def payment_ebook(
-    background_tasks: BackgroundTasks,
-    user: User = Depends(get_current_user),
-    stripe_client: StripeClient = Depends(get_stripe_client),
-):
-    try:
-        session = await stripe_client.checkout.sessions.create_async({
-            "success_url": f"{settings.STRIPE_SUCCESS_URL}?product=ebook",
-            "cancel_url": settings.STRIPE_CANCEL_URL,
-            "payment_method_types": ["card"],
-            "line_items": [{
-                "price": settings.EBOOK_PRICE_ID,
-                "quantity": 1,
-            }],
-            "mode": "payment",
-            "customer_email": user.email,
-            "metadata": {
-                "user_id": str(user.id),
-                "product_type": "ebook"
-            }
-        })
-        
-        return {"checkout_url": session.url}
-        
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
