@@ -95,36 +95,22 @@ async def _resolve_discounts(stripe_client: StripeClient, code: str) -> list[dic
 @router.post("/create-session")
 async def create_session(
     request: CreateSessionRequest,
+    user: User = Depends(get_current_user),
     stripe_client: StripeClient = Depends(get_stripe_client),
 ):
-    # Temporary user object for testing
-    class TempUser:
-        def __init__(self):
-            self.stripe_customer_id = None
-            self.full_name = "Test User"
-            self.email = "test@example.com"
-            self.subscription_id = None
-            self.coupon_used = False
     
-    user = TempUser()
     product_name = request.product_name
     coupon_code = request.coupon_code
-
-    # Get the product_id from the product_name
     plan = await Plan.get_or_none(name=product_name)
     if not plan:
         raise HTTPException(400, "Product not found")
     product_id = plan.stripe_price_id
-
-    # Ensure Stripe customer
     if not user.stripe_customer_id or user.stripe_customer_id.strip() == "":
         customer = await stripe_client.customers.create_async(
             {"name": user.full_name, "email": user.email}
         )
         user.stripe_customer_id = customer.id
-        # Don't save since this is a temp user
 
-    # If user already has a subscription, send them to the billing portal
     if user.subscription_id:
         session = await stripe_client.billing_portal.sessions.create_async(
             {"customer": user.stripe_customer_id, "return_url": settings.STRIPE_SUCCESS_URL}
