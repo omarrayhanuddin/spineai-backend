@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from app.models.coupon import Coupon
 from app.schemas.coupon import CouponApply, CouponOut
 
-router = APIRouter()
+router = APIRouter(prefix="/v1/coupon", tags=["Coupon Endpoints"])
 
 @router.post("/apply", response_model=CouponOut)
 async def apply_coupon(data: CouponApply):
