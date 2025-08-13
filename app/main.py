@@ -13,7 +13,7 @@ from app.api.v1 import (
     treatment_plan,
     communication,
     admin,
-    product
+    product,mail
 )
 from contextlib import asynccontextmanager
 from httpx import AsyncClient as HttpxAsyncClient
@@ -186,4 +186,5 @@ app.include_router(treatment_plan.router)
 app.include_router(admin.router)
 app.include_router(communication.router)
 app.include_router(product.router)
+app.include_router(mail.router)
 logger.info("API routers included: user, chat, payment, feedback.")
