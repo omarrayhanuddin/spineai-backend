@@ -1,7 +1,7 @@
 # app/api/routes/email.py
 
 from fastapi import APIRouter
-from app.services.mail_service import send_email
+from app.services.email_service import send_email
 import os
 
 router = APIRouter(prefix="/v1/email", tags=["Email"])
