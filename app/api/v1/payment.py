@@ -39,9 +39,9 @@ class ImageCreditPackage(str, Enum):
     FIFTY = "50"
 
 IMAGE_CREDIT_PRODUCTS: Dict[ImageCreditPackage, str] = {
-    ImageCreditPackage.TEN: "prod_SrUBnwPCjVywBP",
-    ImageCreditPackage.TWENTY: "prod_SrUDzttTeg2SXE",
-    ImageCreditPackage.FIFTY: "prod_SrUFaLHUwiRgUO"
+    ImageCreditPackage.TEN: "price_1RvlDbLRIklS6QS4OduhbySK",
+    ImageCreditPackage.TWENTY: "price_1RvlF9LRIklS6QS46Kfl1i2f",
+    ImageCreditPackage.FIFTY: "price_1RvlGWLRIklS6QS4W8haEuyD"
 }
 
 class ImageCreditPurchaseRequest(BaseModel):
