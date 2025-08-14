@@ -39,9 +39,9 @@ class ImageCreditPackage(str, Enum):
     FIFTY = "50"
 
 IMAGE_CREDIT_PRODUCTS: Dict[ImageCreditPackage, str] = {
-    ImageCreditPackage.TEN: "prod_SrUBnwPCjVywBP",
-    ImageCreditPackage.TWENTY: "prod_SrUDzttTeg2SXE",
-    ImageCreditPackage.FIFTY: "prod_SrUFaLHUwiRgUO"
+    ImageCreditPackage.TEN: "price_1Rw6mNFjPe0daNEdfsPGLoJd",
+    ImageCreditPackage.TWENTY: "price_1Rw6m4FjPe0daNEd6cHUlvMv",
+    ImageCreditPackage.FIFTY: "price_1Rw6lbFjPe0daNEdhpCC0iTv"
 }
 
 class ImageCreditPurchaseRequest(BaseModel):
@@ -184,46 +184,61 @@ async def get_customer_portal(
 async def buy_ebook(
     request: EbookPurchaseRequest,
     background_tasks: BackgroundTasks,
-    # user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     stripe_client: StripeClient = Depends(get_stripe_client),
 ):
     """
     Endpoint for purchasing an ebook.
-    - Creates a Stripe checkout session
-    - Sends confirmation email with coupon after successful payment
+    - Creates a Stripe checkout session with price_1Rw6l6FjPe0daNEdWIXX4Cfl
+    - After successful payment, sends confirmation email with:
+      - Thank you message
+      - Download link for the ebook
+      - 20% discount coupon for future purchases
     """
     try:
-        # Use authenticated user's email unless specifically overridden
         customer_email = request.email if request.email else user.email
         
-        # Create Stripe checkout session
-        session = await stripe_client.checkout.sessions.create_async({
+        session_params = {
             "success_url": f"{settings.STRIPE_SUCCESS_URL}?product=ebook",
             "cancel_url": settings.STRIPE_CANCEL_URL,
             "payment_method_types": ["card"],
             "line_items": [{
-                "price": settings.EBOOK_PRICE_ID,
+                "price": "price_1Rw6l6FjPe0daNEdWIXX4Cfl",  # Updated price ID
                 "quantity": 1,
             }],
             "mode": "payment",
-            "customer_email": customer_email,
             "metadata": {
-                "user_id": str(user.id),
-                "product_type": "ebook"
+                "product_type": "ebook",
+                "customer_email": customer_email
             }
-        })
+        }
+
+        if user and user.id:
+            session_params["metadata"]["user_id"] = str(user.id)
+            if user.stripe_customer_id:
+                session_params["customer"] = user.stripe_customer_id
+            else:
+                # Create customer if doesn't exist
+                customer = await stripe_client.customers.create_async(
+                    email=customer_email,
+                    name=getattr(user, 'full_name', 'Ebook Customer')
+                )
+                session_params["customer"] = customer.id
+        else:
+            session_params["customer_email"] = customer_email
+
+        session = await stripe_client.checkout.sessions.create_async(session_params)
         
         return {"checkout_url": session.url}
         
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
-
+    
 @router.post("/buy/image-credits")
 async def buy_image_credits(
     request: ImageCreditPurchaseRequest,
     background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),  
     stripe_client: StripeClient = Depends(get_stripe_client),
 ):
     """
@@ -232,19 +247,9 @@ async def buy_image_credits(
     - Sends confirmation email with purchased credits
     """
     try:
-        # Get the correct Stripe price ID
         price_id = IMAGE_CREDIT_PRODUCTS[request.package]
         
-        # Create Stripe customer (temporary for testing)
-        customer = await stripe_client.customers.create_async(
-            {
-                "name": request.customer_name,
-                "email": request.email
-            }
-        )
-
-        # Create Stripe checkout session
-        session = await stripe_client.checkout.sessions.create_async({
+        session_params = {
             "success_url": f"{settings.STRIPE_SUCCESS_URL}?product=image_credits&quantity={request.package}",
             "cancel_url": settings.STRIPE_CANCEL_URL,
             "payment_method_types": ["card"],
@@ -253,19 +258,23 @@ async def buy_image_credits(
                 "quantity": 1,
             }],
             "mode": "payment",
-            "customer_email": request.email,
-            "customer": customer.id,
             "metadata": {
                 "product_type": "image_credits",
                 "credit_amount": request.package.value,
-                "test_mode": "true"
+                "customer_name": request.customer_name,
+                "customer_email": request.email,
             }
-        })
+        }
+
+        if user and user.stripe_customer_id:
+            session_params["customer"] = user.stripe_customer_id
+        else:
+            session_params["customer_email"] = request.email
+        session = await stripe_client.checkout.sessions.create_async(session_params)
         
         return {
             "checkout_url": session.url,
-            "credit_amount": request.package.value,
-            "test_note": "Authentication disabled for testing"
+            "credit_amount": request.package.value
         }
         
     except Exception as e:
@@ -273,7 +282,6 @@ async def buy_image_credits(
             status_code=400, 
             detail=f"Image credit purchase failed: {str(e)}"
         )
-
 
 
 @router.post("/webhook/stripe")
