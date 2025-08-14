@@ -285,12 +285,19 @@ async def buy_image_credits(
 
 
 @router.post("/webhook/stripe")
-async def stripe_webhook(
+async def handle_stripe_webhook(
     request: Request, 
     background_tasks: BackgroundTasks,
     stripe_client: StripeClient = Depends(get_stripe_client)
 ):
-    # Validate webhook signature
+    """
+    Handle all Stripe webhook events with idempotency checks.
+    Processes:
+    - Successful payments (ebook and image credits)
+    - Subscription events
+    - Payment failures
+    """
+    # 1. Verify the webhook signature
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
     
@@ -300,204 +307,346 @@ async def stripe_webhook(
             sig_header, 
             settings.STRIPE_WEBHOOK_SECRET
         )
+    except ValueError as e:
+        raise HTTPException(400, "Invalid payload")
+    except SignatureVerificationError as e:
+        raise HTTPException(400, "Invalid signature")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(400, f"Webhook error: {str(e)}")
 
     event_id = event["id"]
     event_type = event["type"]
-    created_ts = datetime.fromtimestamp(event["created"], tz=timezone.utc)
     data = event["data"]["object"]
-    customer_id = data.get("customer")
+    created_ts = datetime.fromtimestamp(event["created"], tz=timezone.utc)
 
+    # 2. Process the event based on type
     async with in_transaction():
         # Idempotency check
-        existing_event = await PendingEvent.get_or_none(id=event_id, processed=True)
-        if existing_event:
-            return {"status": "success"}
+        if await PendingEvent.filter(id=event_id, processed=True).exists():
+            return {"status": "already processed"}
 
         # Handle checkout.session.completed events
         if event_type == "checkout.session.completed":
-            session = data
-            metadata = session.get("metadata", {})
-            
-            # Ebook purchase flow
-            if metadata.get("product_type") == "ebook":
-                user_email = session["customer_email"]
-                coupon_code = generate_coupon_code()
-                
-                # Send ebook confirmation email
-                background_tasks.add_task(
-                    send_email,
-                    subject="Your E-Book Purchase Confirmation",
-                    recipient=user_email,
-                    template_name="ebook_purchase.html",
-                    context={
-                        "coupon_code": coupon_code,
-                        "company_name": "SpineAi",
-                        "support_email": settings.SUPPORT_EMAIL,
-                        "discount_percentage": "20%",
-                        "current_year": datetime.now().year
-                    }
-                )
-                
-                # Create and store the coupon
-                await CouponCode.create(
-                    code=coupon_code,
-                    discount_percent=20,
-                    valid_until=datetime.now() + timedelta(days=30),
-                    email=user_email
-                )
-                
-                await PendingEvent.create(
-                    id=event_id,
-                    type=event_type,
-                    created=created_ts,
-                    payload=event,
-                    processed=True
-                )
-                return {"status": "success"}
-            
-            # Image credits purchase flow
-            elif metadata.get("product_type") == "image_credits":
-                user_email = session["customer_email"]
-                credit_amount = metadata.get("credit_amount", "10")
-                
-                # Send image credits confirmation email
-                background_tasks.add_task(
-                    send_email,
-                    subject=f"Your {credit_amount} Image Credits Purchase",
-                    recipient=user_email,
-                    template_name="image_credits_purchase.html",
-                    context={
-                        "credit_amount": credit_amount,
-                        "company_name": "SpineAi",
-                        "support_email": settings.SUPPORT_EMAIL,
-                        "current_year": datetime.now().year
-                    }
-                )
-                
-                # Here you would typically add credits to the user's account
-                # Example: await add_image_credits(user_email, int(credit_amount))
-                
-                await PendingEvent.create(
-                    id=event_id,
-                    type=event_type,
-                    created=created_ts,
-                    payload=event,
-                    processed=True
-                )
-                return {"status": "success"}
-
-        # Handle customer events (subscriptions)
-        user = await User.get_or_none(stripe_customer_id=customer_id)
-
-        if not user:
-            await PendingEvent.get_or_create(
-                id=event_id,
-                defaults={
-                    "type": event_type,
-                    "created": created_ts,
-                    "payload": event,
-                    "processed": False,
-                },
+            return await handle_checkout_session(
+                data, 
+                background_tasks, 
+                event_id, 
+                event_type, 
+                created_ts
             )
-            return {"status": "success"}
 
-        # Skip older events
-        if user.last_processed_event_ts and created_ts <= user.last_processed_event_ts:
-            await PendingEvent.get_or_create(
-                id=event_id,
-                defaults={
-                    "type": event_type,
-                    "created": created_ts,
-                    "payload": event,
-                    "processed": False,
-                },
+        # Handle subscription events
+        if event_type.startswith("customer.subscription."):
+            return await handle_subscription_event(
+                data, 
+                event_id, 
+                event_type, 
+                created_ts
             )
-            return {"status": "success"}
 
-        # Process subscription events
-        try:
-            if event_type.startswith("customer.subscription."):
-                subscription_id = data.get("id")
-                status = data.get("status")
-                plan_id = (
-                    data.get("items", {})
-                    .get("data", [{}])[0]
-                    .get("price", {})
-                    .get("id")
-                )
-                period_end_ts = (
-                    data.get("items", {})
-                    .get("data", [{}])[0]
-                    .get("current_period_end")
-                )
-                current_period_end = (
-                    datetime.fromtimestamp(period_end_ts, tz=timezone.utc)
-                    if period_end_ts
-                    else None
-                )
+        # Handle invoice events
+        if event_type.startswith("invoice."):
+            return await handle_invoice_event(
+                data, 
+                event_id, 
+                event_type, 
+                created_ts
+            )
 
-                if event_type == "customer.subscription.created" and not user.coupon_used:
-                    user.coupon_used = True
+        # For unhandled events, just mark as processed
+        await PendingEvent.create(
+            id=event_id,
+            type=event_type,
+            created=created_ts,
+            payload=event,
+            processed=True
+        )
+        return {"status": "processed - no action"}
 
-                if event_type == "customer.subscription.deleted":
-                    user.subscription_status = "active"
-                    user.subscription_id = None
-                    user.next_billing_date = None
-                    user.current_plan = None
-                else:
-                    user.subscription_status = status
-                    user.subscription_id = subscription_id
-                    user.current_plan = plan_id
-                    user.next_billing_date = current_period_end
+async def handle_checkout_session(
+    session: dict,
+    background_tasks: BackgroundTasks,
+    event_id: str,
+    event_type: str,
+    created_ts: datetime
+) -> dict:
+    """Handle completed checkout sessions"""
+    metadata = session.get("metadata", {})
+    payment_status = session.get("payment_status")
+    
+    # Only process successful payments
+    if payment_status != "paid":
+        await PendingEvent.create(
+            id=event_id,
+            type=event_type,
+            created=created_ts,
+            payload={"session": session},
+            processed=True
+        )
+        return {"status": "skipped - payment not successful"}
 
-            elif event_type == "invoice.payment_succeeded":
-                period_end = (
-                    data.get("lines", {})
-                    .get("data", [{}])[0]
-                    .get("period", {})
-                    .get("end")
-                )
-                next_billing_date = (
-                    datetime.fromtimestamp(period_end, tz=timezone.utc)
-                    if period_end
-                    else None
-                )
-                user.subscription_status = "active"
-                if next_billing_date:
-                    user.next_billing_date = next_billing_date
+    # Ebook purchase flow
+    if metadata.get("product_type") == "ebook":
+        return await handle_ebook_purchase(
+            session, 
+            metadata,
+            background_tasks,
+            event_id,
+            event_type,
+            created_ts
+        )
 
-            elif event_type == "invoice.payment_failed":
-                user.subscription_status = "past_due"
+    # Image credits purchase flow
+    elif metadata.get("product_type") == "image_credits":
+        return await handle_image_credits_purchase(
+            session,
+            metadata,
+            background_tasks,
+            event_id,
+            event_type,
+            created_ts
+        )
 
-            elif event_type == "payment_method.attached":
-                user.has_valid_card = True
+    # Unknown product type
+    await PendingEvent.create(
+        id=event_id,
+        type=event_type,
+        created=created_ts,
+        payload={"session": session},
+        processed=True
+    )
+    return {"status": "processed - unknown product type"}
 
-            user.last_processed_event_ts = created_ts
+async def handle_ebook_purchase(
+    session: dict,
+    metadata: dict,
+    background_tasks: BackgroundTasks,
+    event_id: str,
+    event_type: str,
+    created_ts: datetime
+) -> dict:
+    """Process ebook purchase and send confirmation email"""
+    user_email = session.get("customer_email") or metadata.get("customer_email")
+    if not user_email:
+        raise HTTPException(400, "No email provided for ebook purchase")
+
+    coupon_code = generate_coupon_code()
+    pdf_path = os.path.join("app", "static", "files", "ebook.pdf")
+    
+    # Prepare and send email
+    context = {
+        "coupon_code": coupon_code,
+        "discount_percentage": "20%",
+        "support_email": settings.SUPPORT_EMAIL,
+        "company_name": "SpineAi",
+        "current_year": datetime.now().year
+    }
+    
+    background_tasks.add_task(
+        send_email,
+        subject="Your E-Book Purchase Confirmation",
+        recipient=user_email,
+        template_name="ebook_purchase.html",
+        context=context,
+        attachments=[pdf_path] if os.path.exists(pdf_path) else None
+    )
+    
+    # Create coupon
+    await CouponCode.create(
+        code=coupon_code,
+        discount_percent=20,
+        valid_until=datetime.now() + timedelta(days=30),
+        email=user_email
+    )
+    
+    # Update user if available
+    user_id = metadata.get("user_id")
+    if user_id:
+        user = await User.get_or_none(id=user_id)
+        if user:
+            user.ebook_purchased = True
             await user.save()
 
-            await PendingEvent.get_or_create(
-                id=event_id,
-                defaults={
-                    "type": event_type,
-                    "created": created_ts,
-                    "payload": event,
-                    "processed": True,
-                },
-            )
+    await PendingEvent.create(
+        id=event_id,
+        type=event_type,
+        created=created_ts,
+        payload={"session": session},
+        processed=True
+    )
+    return {"status": "success - ebook email sent"}
 
-        except Exception as e:
-            print(f"Error processing event {event_id}: {str(e)}")
-            await PendingEvent.get_or_create(
-                id=event_id,
-                defaults={
-                    "type": event_type,
-                    "created": created_ts,
-                    "payload": event,
-                    "processed": False,
-                },
-            )
-            return {"status": "success"}
+async def handle_image_credits_purchase(
+    session: dict,
+    metadata: dict,
+    background_tasks: BackgroundTasks,
+    event_id: str,
+    event_type: str,
+    created_ts: datetime
+) -> dict:
+    """Process image credits purchase and send confirmation"""
+    user_email = session.get("customer_email") or metadata.get("customer_email")
+    if not user_email:
+        raise HTTPException(400, "No email provided for credits purchase")
 
-    return {"status": "success"}
+    credit_amount = int(metadata.get("credit_amount", 10))
+    
+    # Prepare and send email
+    context = {
+        "credit_amount": credit_amount,
+        "support_email": settings.SUPPORT_EMAIL,
+        "company_name": "SpineAi",
+        "current_year": datetime.now().year
+    }
+    
+    background_tasks.add_task(
+        send_email,
+        subject=f"Your {credit_amount} Image Credits Purchase",
+        recipient=user_email,
+        template_name="image_credits_purchase.html",
+        context=context
+    )
+    
+    user_id = metadata.get("user_id")
+    if user_id:
+        user = await User.get_or_none(id=user_id)
+        if user:
+            user.image_credits += credit_amount
+            await user.save()
+
+    await PendingEvent.create(
+        id=event_id,
+        type=event_type,
+        created=created_ts,
+        payload={"session": session},
+        processed=True
+    )
+    return {"status": "success - credits email sent"}
+
+async def handle_subscription_event(
+    subscription: dict,
+    event_id: str,
+    event_type: str,
+    created_ts: datetime
+) -> dict:
+    """Handle subscription lifecycle events"""
+    customer_id = subscription.get("customer")
+    if not customer_id:
+        await PendingEvent.create(
+            id=event_id,
+            type=event_type,
+            created=created_ts,
+            payload={"subscription": subscription},
+            processed=True
+        )
+        return {"status": "processed - no customer"}
+
+    user = await User.get_or_none(stripe_customer_id=customer_id)
+    if not user:
+        await PendingEvent.create(
+            id=event_id,
+            type=event_type,
+            created=created_ts,
+            payload={"subscription": subscription},
+            processed=True
+        )
+        return {"status": "processed - user not found"}
+
+    # Skip older events
+    if user.last_processed_event_ts and created_ts <= user.last_processed_event_ts:
+        await PendingEvent.create(
+            id=event_id,
+            type=event_type,
+            created=created_ts,
+            payload={"subscription": subscription},
+            processed=True
+        )
+        return {"status": "skipped - older event"}
+
+    # Update subscription status
+    if event_type == "customer.subscription.deleted":
+        user.subscription_status = "canceled"
+        user.subscription_id = None
+        user.next_billing_date = None
+        user.current_plan = None
+    else:
+        user.subscription_status = subscription.get("status", "active")
+        user.subscription_id = subscription.get("id")
+        user.current_plan = (
+            subscription.get("items", {})
+            .get("data", [{}])[0]
+            .get("price", {})
+            .get("id")
+        )
+        period_end = (
+            subscription.get("items", {})
+            .get("data", [{}])[0]
+            .get("current_period_end")
+        )
+        if period_end:
+            user.next_billing_date = datetime.fromtimestamp(period_end, tz=timezone.utc)
+
+    user.last_processed_event_ts = created_ts
+    await user.save()
+
+    await PendingEvent.create(
+        id=event_id,
+        type=event_type,
+        created=created_ts,
+        payload={"subscription": subscription},
+        processed=True
+    )
+    return {"status": "success - subscription updated"}
+
+async def handle_invoice_event(
+    invoice: dict,
+    event_id: str,
+    event_type: str,
+    created_ts: datetime
+) -> dict:
+    """Handle invoice payment events"""
+    customer_id = invoice.get("customer")
+    if not customer_id:
+        await PendingEvent.create(
+            id=event_id,
+            type=event_type,
+            created=created_ts,
+            payload={"invoice": invoice},
+            processed=True
+        )
+        return {"status": "processed - no customer"}
+
+    user = await User.get_or_none(stripe_customer_id=customer_id)
+    if not user:
+        await PendingEvent.create(
+            id=event_id,
+            type=event_type,
+            created=created_ts,
+            payload={"invoice": invoice},
+            processed=True
+        )
+        return {"status": "processed - user not found"}
+
+    if event_type == "invoice.payment_succeeded":
+        period_end = (
+            invoice.get("lines", {})
+            .get("data", [{}])[0]
+            .get("period", {})
+            .get("end")
+        )
+        if period_end:
+            user.next_billing_date = datetime.fromtimestamp(period_end, tz=timezone.utc)
+        user.subscription_status = "active"
+    elif event_type == "invoice.payment_failed":
+        user.subscription_status = "past_due"
+
+    await user.save()
+
+    await PendingEvent.create(
+        id=event_id,
+        type=event_type,
+        created=created_ts,
+        payload={"invoice": invoice},
+        processed=True
+    )
+    return {"status": "success - invoice processed"}
