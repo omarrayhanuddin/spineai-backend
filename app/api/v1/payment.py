@@ -223,7 +223,7 @@ async def buy_ebook(
 async def buy_image_credits(
     request: ImageCreditPurchaseRequest,
     background_tasks: BackgroundTasks,
-    user: User = Depends(get_current_user),  # Changed to make auth optional
+    user: User = Depends(get_current_user),  
     stripe_client: StripeClient = Depends(get_stripe_client),
 ):
     """
