@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .alert-badge {
+        background: #fff8f8;
+        border-left: 4px solid #e74c3c;
+        padding: 15px;
+        margin: 20px 0;
+        font-size: 1.1em;
+      }
+      .purchase-button {
+        display: inline-block;
+        background-color: #3498db;
+        color: white !important;
+        text-decoration: none;
+        padding: 12px 24px;
+        border-radius: 4px;
+        font-weight: bold;
+        margin: 15px 0;
+      }
+      .footer {
+        color: #777;
+        font-size: 0.8em;
+        margin-top: 30px;
+        border-top: 1px solid #eee;
+        padding-top: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Your Image Credits Have Been Used Up</h2>
+      <p>Dear Customer,</p>
+
+      <div class="alert-badge">
+        You've used all
+        <strong>{{ remaining_credits }} image credits</strong> in your account.
+      </div>
+
+      <p>To continue generating images, please purchase more credits:</p>
+
+      <a href="{{ purchase_url }}" class="purchase-button">
+        Purchase More Credits
+      </a>
+
+      <p>We offer credit packages to suit your needs:</p>
+      <ul>
+        <li>10 Credits - Quick top-up</li>
+        <li>20 Credits - Best value</li>
+        <li>50 Credits - For power users</li>
+      </ul>
+
+      <p>
+        If you have any questions about your usage or need assistance, please
+        contact our support team at
+        <a href="mailto:{{ support_email }}">{{ support_email }}</a>.
+      </p>
+
+      <p>Best regards,<br />The {{ company_name }} Team</p>
+
+      <div class="footer">
+        © {{ current_year }} {{ company_name }}. All rights reserved.<br />
+        <a href="{{ account_url }}">Manage your account</a>
+      </div>
+    </div>
+  </body>
+</html>
