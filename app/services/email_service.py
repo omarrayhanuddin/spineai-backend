@@ -4,14 +4,23 @@ from app.core.config import settings
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
+from email.mime.base import MIMEBase
+from email import encoders
 from jinja2 import Environment, FileSystemLoader
 import aiosmtplib
 from datetime import date
 import os
+from typing import List, Optional
 
 template_env = Environment(loader=FileSystemLoader("app/templates"))
 
-async def send_email(subject: str, recipient: str, template_name: str, context: dict, pdf_path: str = None):
+async def send_email(
+    subject: str, 
+    recipient: str, 
+    template_name: str, 
+    context: dict, 
+    attachments: Optional[List[str]] = None
+):
     current_year = str(date.today().year)
     context["current_year"] = current_year
 
@@ -27,14 +36,19 @@ async def send_email(subject: str, recipient: str, template_name: str, context: 
     # HTML part
     message.attach(MIMEText(html_content, "html"))
 
-    # Optional PDF attachment
-    if pdf_path and os.path.exists(pdf_path):
-        with open(pdf_path, "rb") as pdf_file:
-            pdf_attachment = MIMEApplication(pdf_file.read(), _subtype="pdf")
-            pdf_attachment.add_header(
-                "Content-Disposition", "attachment", filename=os.path.basename(pdf_path)
-            )
-            message.attach(pdf_attachment)
+    # Handle attachments
+    if attachments:
+        for attachment_path in attachments:
+            if os.path.exists(attachment_path):
+                with open(attachment_path, "rb") as file:
+                    part = MIMEBase("application", "octet-stream")
+                    part.set_payload(file.read())
+                    encoders.encode_base64(part)
+                    part.add_header(
+                        "Content-Disposition",
+                        f"attachment; filename={os.path.basename(attachment_path)}",
+                    )
+                    message.attach(part)
 
     await aiosmtplib.send(
         message,
