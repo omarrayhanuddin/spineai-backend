@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from stripe import StripeClient, Webhook, SignatureVerificationError
 from pydantic import BaseModel
 from fastapi import BackgroundTasks
-import Optional
+from typing import Optional
 from app.services.email_service import send_email
 import random
 import string
