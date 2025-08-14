@@ -8,6 +8,7 @@ from app.tasks.chat import (
     async_db_operation_for_recommendations_notify,
     async_db_operation_for_treatment_plan,
 )
+from app.tasks.product import async_db_get_ai_recommendation, get_ai_tags_per_session
 
 router = APIRouter(prefix="/v1/admin", tags=["Admin Endpoints"])
 
@@ -52,3 +53,20 @@ async def send_daily_treatment_notification_endpoint(
     print("3")
     send_daily_treatment_notification.delay()
     return {"message": "Daily treatment notification task queued."}
+
+
+@router.post("/send-create-product-tags")
+async def send_create_product_tags_endpoint(
+    current_admin: dict = Depends(get_current_admin),
+    session_id: str = None,
+    function_only: bool = False
+):
+    if not session_id:
+        return {"error": "Session ID is required."}
+    
+    if function_only:
+        await async_db_get_ai_recommendation(session_id)
+        return {"message": "Function only."}
+    
+    get_ai_tags_per_session.delay(session_id)
+    return {"message": "AI product tags creation task queued."}

@@ -9,7 +9,7 @@ def create_celery():
         __name__,
         broker=settings.CELERY_BROKER_URL,
         backend=settings.CELERY_RESULT_BACKEND,
-        include=['app.tasks.chat']
+        include=['app.tasks.chat', 'app.tasks.product']
     )
     
     # Celery configuration

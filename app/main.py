@@ -1,7 +1,20 @@
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="ctranslate2")
+
 from tortoise import Tortoise
 from fastapi import FastAPI
 from app.db.config import init_db
-from app.api.v1 import user, chat, payment, notification, transcribe, treatment_plan, admin
+from app.api.v1 import (
+    user,
+    chat,
+    payment,
+    notification,
+    transcribe,
+    treatment_plan,
+    communication,
+    admin,
+    product,mail,notifications
+)
 from contextlib import asynccontextmanager
 from httpx import AsyncClient as HttpxAsyncClient
 from app.core.config import settings
@@ -14,6 +27,8 @@ import json
 import logging
 import subprocess
 import sys
+
+
 
 logging.basicConfig(
     filename="app.log",
@@ -107,16 +122,17 @@ async def setup_pgvector_hnsw():
             WITH (m = 16, ef_construction = 64);
             """
         )
-        logger.info(
-            "Ensured HNSW index on 'messages.embedding' is created."
-        )
+        logger.info("Ensured HNSW index on 'messages.embedding' is created.")
     except Exception as e:
         logger.critical(f"Failed to set up pgvector HNSW index: {e}")
         raise
 
+
 async def update_user_plan():
     from app.models.user import User
+
     await User.all().update(current_plan="price_1Rn2npFjPe0daNEdBtVYGnAR")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -168,5 +184,8 @@ app.include_router(notification.router)
 app.include_router(transcribe.router)
 app.include_router(treatment_plan.router)
 app.include_router(admin.router)
-# app.include_router(feedback.router)
+app.include_router(communication.router)
+app.include_router(product.router)
+app.include_router(mail.router)
+app.include_router(notifications.router)
 logger.info("API routers included: user, chat, payment, feedback.")

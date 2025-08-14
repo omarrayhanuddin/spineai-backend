@@ -1,4 +1,4 @@
-import base64, os, json, logging, asyncio
+import base64, os, json, logging
 from openai import AsyncClient
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status, Form
 from app.api.dependency import (
@@ -7,6 +7,7 @@ from app.api.dependency import (
     check_subscription_active,
 )
 from app.tasks.chat import create_treatment_per_session
+from app.tasks.product import get_ai_tags_per_session
 from app.models.user import User
 from app.models.chat import (
     ChatSession,
@@ -25,11 +26,17 @@ from app.schemas.chat import (
     UserUploadedFileOut,
 )
 from app.services.file_processing_sernice import FileProcessingService
-from app.utils.helpers import build_spine_diagnosis_prompt, build_post_diagnosis_prompt
 from tortoise_vector.expression import CosineSimilarity
 from tortoise.transactions import atomic
 from app.core.config import settings
 from datetime import datetime, timezone
+
+# Import the helper files
+from app.utils import helpers as premium_helpers
+from app.utils import free_helpers
+
+from app.tasks.product import async_db_get_ai_recommendation
+from app.models.product import Product
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +130,16 @@ async def convert_image_to_base64(file: UploadFile) -> str:
     return f"data:{mime_type};base64,{base64_encoded_image}", file.filename
 
 
+async def makeProductRecommendationText(session):
+    print(session, "printing session")
+    products = await Product.filter(
+        tags__name__in=session.suggested_product_tags).order_by("name").distinct().offset(0).limit(3).values_list("name", "shopify_url")
+    print(products, "printing products")
+    if not products:
+        return ""
+    product_str_list = [f"* [{name}]({url})" for name, url in products]
+    productMessage = f"""#### Products Recommendations based on your condition:\n{'\n'.join(product_str_list)}"""
+    return productMessage
 import time
 
 
@@ -138,6 +155,12 @@ async def send_session_v2(
     user: User = Depends(get_current_user),
     openai_client: AsyncClient = Depends(get_openai_client),
 ):
+    # Determine which helpers module to use based on the user's plan
+    if user.current_plan is None:
+        helpers = free_helpers
+    else:
+        helpers = premium_helpers
+
     total_usage = []
     if not message and not files:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No message or files provided")
@@ -165,6 +188,7 @@ async def send_session_v2(
         )
     if session.is_diagnosed and files is None:
         print("Entered Is diagnosed")
+        print(await makeProductRecommendationText(session))
         similar_messages = (
             await ChatMessage.filter(session_id=session_id)
             .exclude(id=chat_message.id)
@@ -189,7 +213,7 @@ async def send_session_v2(
         context_messages = context_messages + [
             {"sender": msg.sender, "text": msg.content} for msg in similar_messages
         ]
-        messages = build_post_diagnosis_prompt(
+        messages = helpers.build_post_diagnosis_prompt(
             user={"name": user.full_name},
             session_id=session_id,
             findings=session.findings or {},
@@ -198,7 +222,7 @@ async def send_session_v2(
             previous_messages=context_messages,
         )
         response = await openai_client.chat.completions.create(
-            model="gpt-4.1-2025-04-14",
+            model="gpt-4.1",
             messages=messages,
             temperature=0.2,
             response_format={"type": "json_object"},
@@ -314,7 +338,7 @@ async def send_session_v2(
     current_image_data = [{"url": file["base64_data"]} for file in processed_files]
 
     print("Image Summary", session.image_summary)
-    messages = build_spine_diagnosis_prompt(
+    messages = helpers.build_spine_diagnosis_prompt(
         previous_messages=prev_message_data,
         new_images=current_image_data,
         current_message=current_message_data,
@@ -324,7 +348,7 @@ async def send_session_v2(
     print("Build Prompt Time", time.time() - build_pmt_st)
     openai_st = time.time()
     response = await openai_client.chat.completions.create(
-        model="gpt-4.1-2025-04-14",
+        model="gpt-4.1",
         messages=messages,
         temperature=0.2,
         response_format={"type": "json_object"},
@@ -350,9 +374,11 @@ async def send_session_v2(
             recommendations_notified_at=datetime.now(timezone.utc),
             title=backend.get("session_title"),
         )
-        await session.refresh_from_db()
         await session.treatment_plans.all().delete()
         create_treatment_per_session.delay(session_id)
+        # get_ai_tags_per_session.delay(session_id)
+        await async_db_get_ai_recommendation(session_id)
+        await session.refresh_from_db()
     else:
         await ChatSession.filter(id=session_id).update(is_diagnosed=False)
     if backend.get("images_summary") and not backend.get("multiple_region_detected"):
@@ -376,6 +402,11 @@ async def send_session_v2(
         "message_id": ai_chat.id,
         "is_diagnosed": backend.get("is_diagnosed", False),
     }
+    if backend.get("is_diagnosed"):
+        ProductRecommendationMessage = await makeProductRecommendationText(session)
+        ai_chat.content = ai_chat.content + "\n" + ProductRecommendationMessage
+        await ai_chat.save()
+        data_response["message"] = data_response["message"] + "\n" + ProductRecommendationMessage
     if session.title:
         data_response["session_title"] = session.title
     if backend.get("prompt_new_session"):
