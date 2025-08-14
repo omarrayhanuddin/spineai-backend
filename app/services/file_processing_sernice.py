@@ -1,7 +1,7 @@
 import asyncio
 from fastapi import UploadFile, HTTPException
 import pydicom
-import fitz 
+# import fitz   # Removed to avoid PyMuPDF DLL errors
 import io
 import base64
 from typing import List, Dict
@@ -10,8 +10,8 @@ import numpy as np
 import os
 
 class FileProcessingService:
-    """Service class to process various file types and return base64 data with data URI prefix, file type, metadata, filename, and S3 URLs, with single S3 URL per PDF."""
-    
+    """Service class to process various file types and return base64 data with data URI prefix, file type, metadata, filename, and S3 URLs."""
+
     SUPPORTED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
     SUPPORTED_DICOM_EXTENSIONS = {"dcm", "dicom"}
     SUPPORTED_PDF_EXTENSIONS = {"pdf"}
@@ -75,37 +75,21 @@ class FileProcessingService:
 
     @staticmethod
     async def process_pdf(file: UploadFile, index: int) -> List[Dict]:
-        """Process PDF file and convert all pages to base64 images with data URI prefix."""
-        content = await file.read()
-        try:
-            pdf = fitz.open(stream=content, filetype="pdf")
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid PDF file: {e}")
-        
-        results = []
-        for page_num in range(pdf.page_count):
-            page = pdf[page_num]
-            pix = page.get_pixmap(dpi=100, colorspace=fitz.csRGB)
-            img_mode = "RGB" if pix.n == 3 else "RGBA" if pix.n == 4 else "L"
-            image = Image.frombytes(img_mode, [pix.width, pix.height], pix.samples)
-
-            buffered = io.BytesIO()
-            image.save(buffered, format="PNG")
-            base64_encoded_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
-            base64_data = f"data:image/png;base64,{base64_encoded_image}"
-            results.append({
-                "base64_data": base64_data,
-                "file_type": "pdf",
-                "metadata": {"page_number": page_num + 1},
-                "filename": f"{file.filename}_page_{page_num + 1}.png",
-                "original_index": index
-            })
-        pdf.close()
-        return results
+        """
+        Dummy PDF processor — skips actual PDF to image conversion
+        to avoid PyMuPDF dependency errors during development.
+        """
+        return [{
+            "base64_data": None,
+            "file_type": "pdf",
+            "metadata": {"note": "PDF processing disabled in dev mode"},
+            "filename": file.filename,
+            "original_index": index
+        }]
 
     @classmethod
     async def process_files(cls, files: List[UploadFile], s3_urls: List[str]) -> List[Dict]:
-        """Process a list of files and return base64 data with data URI prefix, file type, metadata, filename, and S3 URLs, with single S3 URL per PDF."""
+        """Process a list of files and return base64 data with data URI prefix, file type, metadata, filename, and S3 URLs."""
         if not files:
             return []
         
