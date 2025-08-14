@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .credits {
+        font-size: 1.2em;
+        color: #2c3e50;
+        margin: 20px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Thank You for Your Image Credits Purchase!</h2>
+      <p>Dear Customer,</p>
+
+      <div class="credits">
+        You now have
+        <strong>{{ credit_amount }} image credits</strong> available in your
+        account.
+      </div>
+
+      <p>Start using them immediately in your projects.</p>
+
+      <p>If you have any questions, contact us at {{ support_email }}</p>
+
+      <p>Best regards,<br />{{ company_name }} Team</p>
+    </div>
+  </body>
+</html>
