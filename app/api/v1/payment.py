@@ -184,13 +184,16 @@ async def get_customer_portal(
 async def buy_ebook(
     request: EbookPurchaseRequest,
     background_tasks: BackgroundTasks,
-    user: User = Depends(get_current_user),  # Uncommented this line
+    user: User = Depends(get_current_user),
     stripe_client: StripeClient = Depends(get_stripe_client),
 ):
     """
     Endpoint for purchasing an ebook.
-    - Creates a Stripe checkout session
-    - Sends confirmation email with coupon after successful payment
+    - Creates a Stripe checkout session with price_1Rw6l6FjPe0daNEdWIXX4Cfl
+    - After successful payment, sends confirmation email with:
+      - Thank you message
+      - Download link for the ebook
+      - 20% discount coupon for future purchases
     """
     try:
         customer_email = request.email if request.email else user.email
@@ -200,28 +203,37 @@ async def buy_ebook(
             "cancel_url": settings.STRIPE_CANCEL_URL,
             "payment_method_types": ["card"],
             "line_items": [{
-                "price": settings.EBOOK_PRICE_ID,
+                "price": "price_1Rw6l6FjPe0daNEdWIXX4Cfl",  # Updated price ID
                 "quantity": 1,
             }],
             "mode": "payment",
             "metadata": {
-                "product_type": "ebook"
+                "product_type": "ebook",
+                "customer_email": customer_email
             }
         }
 
         if user and user.id:
             session_params["metadata"]["user_id"] = str(user.id)
-            session_params["customer"] = user.stripe_customer_id if user.stripe_customer_id else None
+            if user.stripe_customer_id:
+                session_params["customer"] = user.stripe_customer_id
+            else:
+                # Create customer if doesn't exist
+                customer = await stripe_client.customers.create_async(
+                    email=customer_email,
+                    name=getattr(user, 'full_name', 'Ebook Customer')
+                )
+                session_params["customer"] = customer.id
         else:
             session_params["customer_email"] = customer_email
 
         session = await stripe_client.checkout.sessions.create_async(session_params)
         
-        return {"checkout_url": session.url}  
+        return {"checkout_url": session.url}
         
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
+    
 @router.post("/buy/image-credits")
 async def buy_image_credits(
     request: ImageCreditPurchaseRequest,
