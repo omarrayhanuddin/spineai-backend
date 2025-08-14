@@ -184,7 +184,7 @@ async def get_customer_portal(
 async def buy_ebook(
     request: EbookPurchaseRequest,
     background_tasks: BackgroundTasks,
-    # user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),  # Uncommented this line
     stripe_client: StripeClient = Depends(get_stripe_client),
 ):
     """
@@ -193,11 +193,9 @@ async def buy_ebook(
     - Sends confirmation email with coupon after successful payment
     """
     try:
-        # Use authenticated user's email unless specifically overridden
         customer_email = request.email if request.email else user.email
         
-        # Create Stripe checkout session
-        session = await stripe_client.checkout.sessions.create_async({
+        session_params = {
             "success_url": f"{settings.STRIPE_SUCCESS_URL}?product=ebook",
             "cancel_url": settings.STRIPE_CANCEL_URL,
             "payment_method_types": ["card"],
@@ -206,18 +204,23 @@ async def buy_ebook(
                 "quantity": 1,
             }],
             "mode": "payment",
-            "customer_email": customer_email,
             "metadata": {
-                "user_id": str(user.id),
                 "product_type": "ebook"
             }
-        })
+        }
+
+        if user and user.id:
+            session_params["metadata"]["user_id"] = str(user.id)
+            session_params["customer"] = user.stripe_customer_id if user.stripe_customer_id else None
+        else:
+            session_params["customer_email"] = customer_email
+
+        session = await stripe_client.checkout.sessions.create_async(session_params)
         
-        return {"checkout_url": session.url}
+        return {"checkout_url": session.url}  
         
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
 
 @router.post("/buy/image-credits")
 async def buy_image_credits(
@@ -267,6 +270,8 @@ async def buy_image_credits(
             status_code=400, 
             detail=f"Image credit purchase failed: {str(e)}"
         )
+
+
 @router.post("/webhook/stripe")
 async def stripe_webhook(
     request: Request, 
