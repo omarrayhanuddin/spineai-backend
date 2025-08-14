@@ -9,9 +9,14 @@ from datetime import datetime, timezone
 from stripe import StripeClient, Webhook, SignatureVerificationError
 from pydantic import BaseModel
 from fastapi import BackgroundTasks
+import Optional
 from app.services.email_service import send_email
 import random
 import string
+
+from enum import Enum
+from typing import Dict
+
 
 router = APIRouter(prefix="/v1/payment", tags=["Payment Endpoints"])
 
@@ -28,6 +33,22 @@ class EbookPurchaseRequest(BaseModel):
 async def plans():
     return await Plan.all()
 
+class ImageCreditPackage(str, Enum):
+    TEN = "10"
+    TWENTY = "20"
+    FIFTY = "50"
+
+IMAGE_CREDIT_PRODUCTS: Dict[ImageCreditPackage, str] = {
+    ImageCreditPackage.TEN: "prod_SrUBnwPCjVywBP",
+    ImageCreditPackage.TWENTY: "prod_SrUDzttTeg2SXE",
+    ImageCreditPackage.FIFTY: "prod_SrUFaLHUwiRgUO"
+}
+
+class ImageCreditPurchaseRequest(BaseModel):
+    email: str
+    package: ImageCreditPackage
+    customer_name: Optional[str] = "Customer"
+    
 
 @router.post(
     "/plan/create", response_model=PlanOut, dependencies=[Depends(get_current_admin)]
@@ -199,6 +220,60 @@ async def buy_ebook(
 
 
 
+@router.post("/buy/image-credits")
+async def buy_image_credits(
+    request: ImageCreditPurchaseRequest,
+    background_tasks: BackgroundTasks,
+    stripe_client: StripeClient = Depends(get_stripe_client),
+):
+    """
+    Endpoint for purchasing image credits
+    - Creates a Stripe checkout session
+    - Sends confirmation email with purchased credits
+    """
+    try:
+        # Get the correct Stripe price ID
+        price_id = IMAGE_CREDIT_PRODUCTS[request.package]
+        
+        # Create Stripe customer (temporary for testing)
+        customer = await stripe_client.customers.create_async(
+            {
+                "name": request.customer_name,
+                "email": request.email
+            }
+        )
+
+        # Create Stripe checkout session
+        session = await stripe_client.checkout.sessions.create_async({
+            "success_url": f"{settings.STRIPE_SUCCESS_URL}?product=image_credits&quantity={request.package}",
+            "cancel_url": settings.STRIPE_CANCEL_URL,
+            "payment_method_types": ["card"],
+            "line_items": [{
+                "price": price_id,
+                "quantity": 1,
+            }],
+            "mode": "payment",
+            "customer_email": request.email,
+            "customer": customer.id,
+            "metadata": {
+                "product_type": "image_credits",
+                "credit_amount": request.package.value,
+                "test_mode": "true"
+            }
+        })
+        
+        return {
+            "checkout_url": session.url,
+            "credit_amount": request.package.value,
+            "test_note": "Authentication disabled for testing"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Image credit purchase failed: {str(e)}"
+        )
+
 
 
 @router.post("/webhook/stripe")
@@ -232,7 +307,7 @@ async def stripe_webhook(
         if existing_event:
             return {"status": "success"}
 
-        # Handle different event types
+        # Handle checkout.session.completed events
         if event_type == "checkout.session.completed":
             session = data
             metadata = session.get("metadata", {})
@@ -273,8 +348,39 @@ async def stripe_webhook(
                     processed=True
                 )
                 return {"status": "success"}
+            
+            # Image credits purchase flow
+            elif metadata.get("product_type") == "image_credits":
+                user_email = session["customer_email"]
+                credit_amount = metadata.get("credit_amount", "10")
+                
+                # Send image credits confirmation email
+                background_tasks.add_task(
+                    send_email,
+                    subject=f"Your {credit_amount} Image Credits Purchase",
+                    recipient=user_email,
+                    template_name="image_credits_purchase.html",
+                    context={
+                        "credit_amount": credit_amount,
+                        "company_name": "SpineAi",
+                        "support_email": settings.SUPPORT_EMAIL,
+                        "current_year": datetime.now().year
+                    }
+                )
+                
+                # Here you would typically add credits to the user's account
+                # Example: await add_image_credits(user_email, int(credit_amount))
+                
+                await PendingEvent.create(
+                    id=event_id,
+                    type=event_type,
+                    created=created_ts,
+                    payload=event,
+                    processed=True
+                )
+                return {"status": "success"}
 
-        # Existing subscription handling logic
+        # Handle customer events (subscriptions)
         user = await User.get_or_none(stripe_customer_id=customer_id)
 
         if not user:
@@ -387,4 +493,3 @@ async def stripe_webhook(
             return {"status": "success"}
 
     return {"status": "success"}
-
