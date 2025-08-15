@@ -7,6 +7,7 @@ from app.utils.helpers import get_password_hash, generate_token, generate_secret
 import asyncio
 import logging
 from datetime import datetime, timezone
+from app.core.config import settings
 
 
 class User(BaseModelWithoutID):
@@ -73,9 +74,6 @@ class User(BaseModelWithoutID):
                 .exclude(usage_type__in=["jpg", "jpeg", "png"])
                 .count(),
             )
-            print("Total Messages:", total_message)
-            print("Total Images:", total_images)
-            print("Total Files:", total_files)
         except Exception as e:
             logging.error(f"Database query failed: {e}")
             raise HTTPException(
@@ -83,9 +81,6 @@ class User(BaseModelWithoutID):
                 detail="Internal server error while checking free trial limits",
             )
         if files:
-            print("here", self.id)
-            print("plan", plan)
-            print("Total Images:", total_images, "Uploaded Images:", uploaded_image_count)
             if total_images + uploaded_image_count > plan.image_limit:
                 if self.image_credit > 0:
                     if uploaded_image_count > self.image_credit:
@@ -95,18 +90,17 @@ class User(BaseModelWithoutID):
                         )
                     self.image_credit -= uploaded_image_count
                     await self.save()
-                    return
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Current plan image limit of {plan.image_limit} exceeded",
-                )
-            if uploaded_file_count == 0:
-                return
-            if total_files + uploaded_file_count > plan.file_limit:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Current plan non-image file limit of {plan.file_limit} exceeded",
-                )
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Your current plan's image limit of {plan.image_limit} has been exceeded. To continue, please purchase additional image credits or upgrade your plan in the [settings]({settings.FRONTEND_URL}/dashboard/settings).",
+                    )
+            if uploaded_file_count > 0:
+                if total_files + uploaded_file_count > plan.file_limit:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Current plan non-image file limit of {plan.file_limit} exceeded",
+                    )
         if total_message >= plan.message_limit:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
