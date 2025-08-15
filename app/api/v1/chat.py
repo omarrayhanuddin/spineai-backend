@@ -98,6 +98,9 @@ async def user_dashboard(user: User = Depends(get_current_user)):
         "total_sessions": await user.chat_sessions.all().count(),
         "total_files": await UserUploadedFile.filter(user=user).count(),
         "total_reports": await GeneratedReport.filter(user=user).count(),
+        "current_plan_message_limit": plan.message_limit,
+        "current_plan_image_limit": plan.image_limit,
+        "current_plan_file_limit": plan.file_limit,
         "message_left": message_left,
         "image_left": image_left,
         "file_left": file_left,
@@ -339,7 +342,9 @@ async def send_session_v2(
             )
             for file, s3_url in zip(files, s3_urls)
         ]
-
+        for file in files:
+            print("Processing file:", file.filename)
+            print("Usage Type:", file.filename.split(".")[-1].lower())
         total_usage += [
             Usage(
                 user=user,

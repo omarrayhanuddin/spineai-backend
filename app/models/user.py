@@ -73,6 +73,9 @@ class User(BaseModelWithoutID):
                 .exclude(usage_type__in=["jpg", "jpeg", "png"])
                 .count(),
             )
+            print("Total Messages:", total_message)
+            print("Total Images:", total_images)
+            print("Total Files:", total_files)
         except Exception as e:
             logging.error(f"Database query failed: {e}")
             raise HTTPException(
@@ -97,6 +100,8 @@ class User(BaseModelWithoutID):
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=f"Current plan image limit of {plan.image_limit} exceeded",
                 )
+            if uploaded_file_count == 0:
+                return
             if total_files + uploaded_file_count > plan.file_limit:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,

@@ -185,9 +185,11 @@ async def logout(user: User = Depends(get_current_user)):
     return {"message": "Logout successfull"}
 
 
-@router.put("/update-settings")
+@router.put("/update-settings", response_model=UserOut)
 async def update_user_settings(
     settings: UserSettings, user: User = Depends(get_current_user)
 ):
-    return await user.update_from_dict(settings.model_dump())
-
+    user.update_from_dict(settings.model_dump())
+    await user.save()
+    await user.refresh_from_db()
+    return user
