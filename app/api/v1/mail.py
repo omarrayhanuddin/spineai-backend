@@ -92,6 +92,7 @@ async def send_image_credits_email(
             status_code=500,
             detail=f"Failed to send image credits email: {str(e)}"
         )
+    
 @router.post("/send-credit-limit-notification")
 async def send_credit_limit_notification(
     recipient: str,

@@ -13,13 +13,6 @@ class Settings(BaseSettings):
     STRIPE_CANCEL_URL: str = Field(default=None, env="STRIPE_CANCEL_URL")
     EBOOK_PRICE_ID: str = "prod_SrUMxvCyFr2Urm"
     DATABASE_URL: str = Field(..., env=["DATABASE_URL", "DB_URL"])
-    MISTRAL_API_KEY: str | None = Field(default=None, env="MISTRAL_API_KEY")
-    DOCUMENT_INTELLIGENCE_API_KEY: str | None = Field(
-        default=None, env="DOCUMENT_INTELLIGENCE_API_KEY"
-    )
-    DOCUMENT_INTELLIGENCE_ENDPOINT: str | None = Field(
-        default=None, env="DOCUMENT_INTELLIGENCE_ENDPOINT"
-    )
     OPENAI_API_KEY: str | None = Field(default=None, env="OPENAI_API_KEY")
     JWT_SECRET_KEY: str | None = Field(default="your-secret-key", env="JWT_SECRET_KEY")
     S3_ACCESS_KEY: str | None = Field(default="your-s3-access-key", env="S3_ACCESS_KEY")
@@ -38,6 +31,9 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = Field(..., env="SMTP_PASSWORD")
     FROM_EMAIL: EmailStr = Field(
         default_factory=lambda: os.getenv("SMTP_USER", ""), env="FROM_EMAIL"
+    )
+    SUPPORT_EMAIL: EmailStr = Field(
+        default_factory=lambda: os.getenv("SMTP_USER", ""), env="SUPPORT_EMAIL"
     )
     CELERY_BROKER_URL: str = Field(default="redis://localhost:6379/0", env="CELERY_BROKER_URL")
     CELERY_RESULT_BACKEND: str = Field(default="redis://localhost:6379/0", env="CELERY_RESULT_BACKEND")

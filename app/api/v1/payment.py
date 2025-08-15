@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Body
 from app.api.dependency import get_current_user, get_stripe_client, get_current_admin
 from app.models.user import User, CouponCode
 from app.models.payment import Plan, PendingEvent
 from app.schemas.payment import PlanOut, PlanIn
 from app.core.config import settings
 from tortoise.transactions import in_transaction
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from stripe import StripeClient, Webhook, SignatureVerificationError
 from pydantic import BaseModel
 from fastapi import BackgroundTasks
@@ -13,6 +13,7 @@ from typing import Optional
 from app.services.email_service import send_email
 import random
 import string
+import os
 
 from enum import Enum
 from typing import Dict
@@ -24,11 +25,13 @@ router = APIRouter(prefix="/v1/payment", tags=["Payment Endpoints"])
 class CreateSessionRequest(BaseModel):
     product_name: str
     coupon_code: str | None = None
+
 def generate_coupon_code(length=8):
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
 class EbookPurchaseRequest(BaseModel):
     email: str | None = None
+
 @router.get("/plan/all", response_model=list[PlanOut])
 async def plans():
     return await Plan.all()
@@ -182,9 +185,7 @@ async def get_customer_portal(
 
 @router.post("/buy/ebook")
 async def buy_ebook(
-    request: EbookPurchaseRequest,
-    background_tasks: BackgroundTasks,
-    user: User = Depends(get_current_user),
+    customer_email = Body(..., embed=True),
     stripe_client: StripeClient = Depends(get_stripe_client),
 ):
     """
@@ -196,14 +197,14 @@ async def buy_ebook(
       - 20% discount coupon for future purchases
     """
     try:
-        customer_email = request.email if request.email else user.email
+        customer_email = customer_email.strip()
         
         session_params = {
             "success_url": f"{settings.STRIPE_SUCCESS_URL}?product=ebook",
             "cancel_url": settings.STRIPE_CANCEL_URL,
             "payment_method_types": ["card"],
             "line_items": [{
-                "price": "price_1Rw6l6FjPe0daNEdWIXX4Cfl",  # Updated price ID
+                "price": "price_1Rw6l6FjPe0daNEdWIXX4Cfl",
                 "quantity": 1,
             }],
             "mode": "payment",
@@ -212,6 +213,7 @@ async def buy_ebook(
                 "customer_email": customer_email
             }
         }
+        user = await User.get_or_none(email=customer_email)
 
         if user and user.id:
             session_params["metadata"]["user_id"] = str(user.id)
@@ -430,7 +432,7 @@ async def handle_ebook_purchase(
     if not user_email:
         raise HTTPException(400, "No email provided for ebook purchase")
 
-    coupon_code = generate_coupon_code()
+    coupon_code = "DISCOUNT20"
     pdf_path = os.path.join("app", "static", "files", "ebook.pdf")
     
     # Prepare and send email
@@ -450,22 +452,6 @@ async def handle_ebook_purchase(
         context=context,
         attachments=[pdf_path] if os.path.exists(pdf_path) else None
     )
-    
-    # Create coupon
-    await CouponCode.create(
-        code=coupon_code,
-        discount_percent=20,
-        valid_until=datetime.now() + timedelta(days=30),
-        email=user_email
-    )
-    
-    # Update user if available
-    user_id = metadata.get("user_id")
-    if user_id:
-        user = await User.get_or_none(id=user_id)
-        if user:
-            user.ebook_purchased = True
-            await user.save()
 
     await PendingEvent.create(
         id=event_id,
