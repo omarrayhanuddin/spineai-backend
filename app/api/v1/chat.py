@@ -1,4 +1,4 @@
-import base64, os, json, logging
+import base64, os, json, logging, asyncio
 from openai import AsyncClient
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status, Form
 from app.api.dependency import (
@@ -6,9 +6,10 @@ from app.api.dependency import (
     get_openai_client,
     check_subscription_active,
 )
+from app.utils.helpers import get_month_range
 from app.tasks.chat import create_treatment_per_session
-from app.tasks.product import get_ai_tags_per_session
 from app.models.user import User
+from app.models.payment import Plan
 from app.models.chat import (
     ChatSession,
     ChatMessage,
@@ -51,10 +52,56 @@ router = APIRouter(prefix="/v1/chat", tags=["Chat Endpoints"])
 
 @router.get("/dashboard", response_model=dict)
 async def user_dashboard(user: User = Depends(get_current_user)):
+    plan = None
+    if user.current_plan not in (None, ""):
+        plan = await Plan.get_or_none(stripe_price_id=user.current_plan)
+    else:
+        plan = await Plan.get_or_none(name="0.00")
+    if not plan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Plan not found",
+        )
+    start_current_month, start_next_month = get_month_range()
+    total_message, total_images, total_files = await asyncio.gather(
+        Usage.filter(
+            created_at__gte=start_current_month,
+            created_at__lt=start_next_month,
+            user=user,
+            usage_type="message",
+        ).count(),
+        Usage.filter(
+            created_at__gte=start_current_month,
+            created_at__lt=start_next_month,
+            user=user,
+            usage_type__in=["jpg", "jpeg", "png"],
+        ).count(),
+        Usage.filter(
+            created_at__gte=start_current_month,
+            created_at__lt=start_next_month,
+            user=user,
+        )
+        .exclude(usage_type__in=["jpg", "jpeg", "png"])
+        .count(),
+    )
+    message_left = plan.message_limit - total_message
+    if message_left < 0:
+        message_left = 0
+    image_left = plan.image_limit - total_images
+    if image_left < 0:
+        image_left = 0
+    file_left = plan.file_limit - total_files
+    if file_left < 0:
+        file_left = 0
+       
     return {
         "total_sessions": await user.chat_sessions.all().count(),
         "total_files": await UserUploadedFile.filter(user=user).count(),
         "total_reports": await GeneratedReport.filter(user=user).count(),
+        "message_left": message_left,
+        "image_left": image_left,
+        "file_left": file_left,
+        "image_credit": user.image_credit,
     }
 
 
@@ -132,14 +179,22 @@ async def convert_image_to_base64(file: UploadFile) -> str:
 
 async def makeProductRecommendationText(session):
     print(session, "printing session")
-    products = await Product.filter(
-        tags__name__in=session.suggested_product_tags).order_by("name").distinct().offset(0).limit(3).values_list("name", "shopify_url")
+    products = (
+        await Product.filter(tags__name__in=session.suggested_product_tags)
+        .order_by("name")
+        .distinct()
+        .offset(0)
+        .limit(3)
+        .values_list("name", "shopify_url")
+    )
     print(products, "printing products")
     if not products:
         return ""
     product_str_list = [f"* [{name}]({url})" for name, url in products]
     productMessage = f"""#### Products Recommendations based on your condition:\n{'\n'.join(product_str_list)}"""
     return productMessage
+
+
 import time
 
 
@@ -406,7 +461,9 @@ async def send_session_v2(
         ProductRecommendationMessage = await makeProductRecommendationText(session)
         ai_chat.content = ai_chat.content + "\n" + ProductRecommendationMessage
         await ai_chat.save()
-        data_response["message"] = data_response["message"] + "\n" + ProductRecommendationMessage
+        data_response["message"] = (
+            data_response["message"] + "\n" + ProductRecommendationMessage
+        )
     if session.title:
         data_response["session_title"] = session.title
     if backend.get("prompt_new_session"):

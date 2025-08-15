@@ -21,6 +21,8 @@ UserOut = pydantic_model_creator(
         "subscription_id",
         "current_plan",
         "next_billing_date",
+        "allow_email_notifications",
+        "allow_push_notifications",
     ],
     # exclude=["chat_sessions"]
 )
