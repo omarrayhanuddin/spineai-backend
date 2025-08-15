@@ -81,7 +81,8 @@ async def create_or_update_plans_from_file(filepath: Path = "stage_plans.json"):
     try:
         async with aiofiles.open(filepath, mode="r") as f:
             content = await f.read()
-            plans = json.loads(content)
+            data = json.loads(content)
+            plans = data.get("subscription_plans", [])
         logger.info(f"Successfully loaded plans from '{filepath}'.")
     except json.JSONDecodeError as e:
         logger.critical(f"Error decoding JSON from plans file '{filepath}': {e}")

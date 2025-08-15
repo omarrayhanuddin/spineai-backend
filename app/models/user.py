@@ -25,6 +25,7 @@ class User(BaseModelWithoutID):
     next_billing_date = fields.DatetimeField(null=True)
     last_processed_event_ts = fields.DatetimeField(null=True)
     coupon_used = fields.BooleanField(default=False)
+    image_credit = fields.IntField(default=0)
     secret_key = fields.CharField(
         default=generate_secret_key, max_length=100, null=True
     )
@@ -79,7 +80,19 @@ class User(BaseModelWithoutID):
                 detail="Internal server error while checking free trial limits",
             )
         if files:
+            print("here", self.id)
+            print("plan", plan)
+            print("Total Images:", total_images, "Uploaded Images:", uploaded_image_count)
             if total_images + uploaded_image_count > plan.image_limit:
+                if self.image_credit > 0:
+                    if uploaded_image_count > self.image_credit:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail=f"Current plan image limit of {plan.image_limit} exceeded, but you have {self.image_credit} image credits available",
+                        )
+                    self.image_credit -= uploaded_image_count
+                    await self.save()
+                    return
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=f"Current plan image limit of {plan.image_limit} exceeded",

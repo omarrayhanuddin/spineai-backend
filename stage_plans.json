@@ -1,50 +1,60 @@
-[
-  {
-    "name": "0.00",
-    "description": "Premium Plan",
-    "price": 0.0,
-    "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL1",
-    "chat_mode": "basic",
-    "message_limit": 20,
-    "image_limit": 2,
-    "file_limit": 1,
-    "weekly_reminder": false,
-    "treatment_plan": false
+{
+  "subscription_plan": [
+    {
+      "name": "0.00",
+      "description": "Premium Plan",
+      "price": 0.0,
+      "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL1",
+      "chat_mode": "basic",
+      "message_limit": 20,
+      "image_limit": 2,
+      "file_limit": 1,
+      "weekly_reminder": false,
+      "treatment_plan": false
+    },
+    {
+      "name": "9.99",
+      "description": "Starter",
+      "price": 9.99,
+      "stripe_price_id": "price_1Rn2mRFjPe0daNEdYLLKBlXu",
+      "chat_mode": "basic",
+      "message_limit": 100,
+      "image_limit": 10,
+      "file_limit": 3,
+      "weekly_reminder": false,
+      "treatment_plan": false
+    },
+    {
+      "name": "39.99",
+      "description": "Pro",
+      "price": 39.99,
+      "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL",
+      "chat_mode": "pro",
+      "message_limit": 250,
+      "image_limit": 30,
+      "file_limit": 7,
+      "weekly_reminder": true,
+      "treatment_plan": false
+    },
+    {
+      "name": "99.99",
+      "description": "Elite",
+      "price": 99.99,
+      "stripe_price_id": "price_1Rn2npFjPe0daNEdBtVYGnAR",
+      "chat_mode": "advanced",
+      "message_limit": 1000000,
+      "image_limit": 50,
+      "file_limit": 20,
+      "weekly_reminder": true,
+      "treatment_plan": true
+    }
+  ],
+  "image_credit_products": {
+    "10": "price_1Rw6mNFjPe0daNEdfsPGLoJd",
+    "20": "price_1Rw6m4FjPe0daNEd6cHUlvMv",
+    "50": "price_1Rw6lbFjPe0daNEdhpCC0iTv"
   },
-  {
-    "name": "9.99",
-    "description": "Starter",
-    "price": 9.99,
-    "stripe_price_id": "price_1Rn2mRFjPe0daNEdYLLKBlXu",
-    "chat_mode": "basic",
-    "message_limit": 100,
-    "image_limit": 10,
-    "file_limit": 3,
-    "weekly_reminder": false,
-    "treatment_plan": false
-  },
-  {
-    "name": "39.99",
-    "description": "Pro",
-    "price": 39.99,
-    "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL",
-    "chat_mode": "pro",
-    "message_limit": 250,
-    "image_limit": 30,
-    "file_limit": 7,
-    "weekly_reminder": true,
-    "treatment_plan": false
-  },
-  {
-    "name": "99.99",
-    "description": "Elite",
-    "price": 99.99,
-    "stripe_price_id": "price_1Rn2npFjPe0daNEdBtVYGnAR",
-    "chat_mode": "advanced",
-    "message_limit": 1000000,
-    "image_limit": 50,
-    "file_limit": 20,
-    "weekly_reminder": true,
-    "treatment_plan": true
+  "ebook_products": {
+    "1": "price_1Rw6l6FjPe0daNEdWIXX4Cfl"
   }
-]
+}

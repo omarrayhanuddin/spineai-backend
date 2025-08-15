@@ -85,10 +85,10 @@ async def verify_email(
             {"name": user.full_name, "email": user.email}
         )
         user.stripe_customer_id = customer.id
-    await user.save()
-    plan = await Plan.get_or_none(name__iexact="free")
-    user.subscription_status = "active"
-    user.current_plan = plan.stripe_price_id
+    # await user.save()
+    # plan = await Plan.get_or_none(name__iexact="free")
+    # user.subscription_status = "active"
+    # user.current_plan = plan.stripe_price_id
     await user.save()
     return {"message": "Email verified successfully"}
 
