@@ -131,7 +131,6 @@ def build_spine_diagnosis_prompt(
                 "Your primary role is to gather relevant medical information by asking focused, single or dual questions.\n"
                 "Important Rules for Intake:\n"
                 "- Ask only one or two questions at a time.\n"
-                "- Make the questions text bold and other important part of the response bold.\n"
                 "- Make sure that the questions are in seperate lines. Don't put 2 questions in 1 line.\n"
                 "- Await a clear response from the user before posing the next question.\n"
                 "- If a question is unanswered or skipped, gently rephrase or ask it again.\n"

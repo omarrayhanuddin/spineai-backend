@@ -47,6 +47,8 @@ image_credit_products = json_data.get("image_credit_products", {})
 class CreateSessionRequest(BaseModel):
     product_name: str
     coupon_code: str | None = None
+    success_url: str = settings.STRIPE_SUCCESS_URL
+    cancel_url: str = settings.STRIPE_CANCEL_URL
 
 
 class ImageCreditPackage(str, Enum):
@@ -152,15 +154,15 @@ async def create_session(
         session = await stripe_client.billing_portal.sessions.create_async(
             {
                 "customer": user.stripe_customer_id,
-                "return_url": settings.STRIPE_SUCCESS_URL,
+                "return_url": request.cancel_url
             }
         )
         return {"checkout_url": session.url}
 
     # Build checkout params
     params = {
-        "success_url": settings.STRIPE_SUCCESS_URL,
-        "cancel_url": settings.STRIPE_CANCEL_URL,
+        "success_url": request.success_url,
+        "cancel_url": request.cancel_url,
         "mode": "subscription",
         "line_items": [{"price": product_id, "quantity": 1}],
         "customer": user.stripe_customer_id,
@@ -182,12 +184,13 @@ async def create_session(
 async def get_customer_portal(
     user: User = Depends(get_current_user),
     stripe_client: StripeClient = Depends(get_stripe_client),
+    return_url: Optional[str] = settings.STRIPE_CANCEL_URL,
 ):
     if not user.stripe_customer_id:
         raise HTTPException(400, "Stripe customer not found.")
 
     session = await stripe_client.billing_portal.sessions.create_async(
-        {"customer": user.stripe_customer_id, "return_url": settings.STRIPE_SUCCESS_URL}
+        {"customer": user.stripe_customer_id, "return_url": return_url}
     )
     return {"portal_url": session.url}
 

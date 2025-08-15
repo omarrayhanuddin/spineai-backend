@@ -38,6 +38,7 @@ from app.utils import free_helpers
 
 from app.tasks.product import async_db_get_ai_recommendation
 from app.models.product import Product
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ async def user_dashboard(user: User = Depends(get_current_user)):
     file_left = plan.file_limit - total_files
     if file_left < 0:
         file_left = 0
-       
+
     return {
         "total_sessions": await user.chat_sessions.all().count(),
         "total_files": await UserUploadedFile.filter(user=user).count(),
@@ -161,27 +162,7 @@ async def embed_text(text: str, openai_client: AsyncClient):
     return res.data[0].embedding
 
 
-async def convert_image_to_base64(file: UploadFile) -> str:
-    """Convert uploaded image to base64 string with data URI prefix."""
-    content = await file.read()
-    base64_encoded_image = base64.b64encode(content).decode("utf-8")
-    mime_type = file.content_type
-    if not mime_type:
-        file_extension = os.path.splitext(file.filename)[1].lower()
-        if file_extension == ".jpg" or file_extension == ".jpeg":
-            mime_type = "image/jpeg"
-        elif file_extension == ".png":
-            mime_type = "image/png"
-        elif file_extension == ".gif":
-            mime_type = "image/gif"
-
-    if not mime_type:
-        mime_type = "application/octet-stream"
-    return f"data:{mime_type};base64,{base64_encoded_image}", file.filename
-
-
 async def makeProductRecommendationText(session):
-    print(session, "printing session")
     products = (
         await Product.filter(tags__name__in=session.suggested_product_tags)
         .order_by("name")
@@ -190,15 +171,11 @@ async def makeProductRecommendationText(session):
         .limit(3)
         .values_list("name", "shopify_url")
     )
-    print(products, "printing products")
     if not products:
         return ""
     product_str_list = [f"* [{name}]({url})" for name, url in products]
     productMessage = f"""#### Products Recommendations based on your condition:\n{'\n'.join(product_str_list)}"""
     return productMessage
-
-
-import time
 
 
 @atomic
@@ -245,8 +222,6 @@ async def send_session_v2(
             Usage(user=user, usage_count=1, source=session.id, usage_type="message")
         )
     if session.is_diagnosed and files is None:
-        print("Entered Is diagnosed")
-        print(await makeProductRecommendationText(session))
         similar_messages = (
             await ChatMessage.filter(session_id=session_id)
             .exclude(id=chat_message.id)
@@ -342,9 +317,6 @@ async def send_session_v2(
             )
             for file, s3_url in zip(files, s3_urls)
         ]
-        for file in files:
-            print("Processing file:", file.filename)
-            print("Usage Type:", file.filename.split(".")[-1].lower())
         total_usage += [
             Usage(
                 user=user,
@@ -360,18 +332,18 @@ async def send_session_v2(
         processed_files = await FileProcessingService.process_files(
             files=files, s3_urls=s3_urls
         )
-        file_data = [
-            ChatImage(
-                message_id=chat_message.id,
-                img_base64=file["base64_data"],
-                filename=file["filename"],
-                file_type=file["file_type"],
-                s3_url=file["s3_url"],
-                meta_data=file["metadata"],
-            )
-            for file in processed_files
-        ]
-        await ChatImage.bulk_create(file_data)
+        # file_data = [
+        #     ChatImage(
+        #         message_id=chat_message.id,
+        #         img_base64=file["base64_data"],
+        #         filename=file["filename"],
+        #         file_type=file["file_type"],
+        #         s3_url=file["s3_url"],
+        #         meta_data=file["metadata"],
+        #     )
+        #     for file in processed_files
+        # ]
+        # await ChatImage.bulk_create(file_data)
     print("Image Proccessing Time", time.time() - file_st)
 
     build_pmt_st = time.time()
@@ -397,7 +369,6 @@ async def send_session_v2(
     )
     current_image_data = [{"url": file["base64_data"]} for file in processed_files]
 
-    print("Image Summary", session.image_summary)
     messages = helpers.build_spine_diagnosis_prompt(
         previous_messages=prev_message_data,
         new_images=current_image_data,
@@ -419,7 +390,7 @@ async def send_session_v2(
         ai_response = json.loads(result)
     except Exception as e:
         raise HTTPException(500, f"AI response error: {e}")
-    print("AI Response", ai_response)
+    # print("AI Response", ai_response)
     print("OpenAI Time", time.time() - openai_st)
     final_response_st = time.time()
     backend = ai_response.get("backend", {})

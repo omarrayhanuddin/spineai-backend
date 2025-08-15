@@ -93,7 +93,7 @@ class User(BaseModelWithoutID):
                 else:
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
-                        detail=f"Your current plan's image limit of {plan.image_limit} has been exceeded. To continue, please purchase additional image credits or upgrade your plan in the [settings]({settings.FRONTEND_URL}/dashboard/settings).",
+                        detail=f"Your current plan's image limit of {plan.image_limit} has been exceeded. To continue, please purchase additional image credits or upgrade your plan in the [settings](dashboard/settings).",
                     )
             if uploaded_file_count > 0:
                 if total_files + uploaded_file_count > plan.file_limit:
