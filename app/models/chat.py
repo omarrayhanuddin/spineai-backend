@@ -68,7 +68,7 @@ class UserUploadedFile(BaseModelWithoutID):
     message = fields.ForeignKeyField(
         "models.ChatMessage",
         related_name="user_uploaded_files",
-        on_delete=fields.SET_NULL,
+        on_delete=fields.OnDelete.SET_NULL,
         null=True,
     )
     user = fields.ForeignKeyField("models.User", related_name="uploaded_files")
