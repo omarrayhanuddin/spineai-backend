@@ -152,10 +152,7 @@ async def create_session(
 
     if user.subscription_id:
         session = await stripe_client.billing_portal.sessions.create_async(
-            {
-                "customer": user.stripe_customer_id,
-                "return_url": request.cancel_url
-            }
+            {"customer": user.stripe_customer_id, "return_url": request.cancel_url}
         )
         return {"checkout_url": session.url}
 
@@ -422,15 +419,14 @@ async def handle_ebook_purchase(
     user_email = session.get("customer_email") or metadata.get("customer_email")
     if not user_email:
         raise HTTPException(400, "No email provided for ebook purchase")
-
-    coupon_code = "DISCOUNT101"
+    coupon_code_data = json_data.get("coupon_code", {})
     pdf_path = os.path.join("app", "static", "files", "ebook.pdf")
 
     # Prepare and send email
     context = {
-        "coupon_code": coupon_code,
+        "coupon_code": coupon_code_data.get("code", "DISCOUNT101"),
+        "discount_percentage": f"{coupon_code_data.get("discount_percentage", "20%")}",
         "customer_name": metadata.get("customer_name", "Ebook Customer"),
-        "discount_percentage": "20%",
         "support_email": settings.SUPPORT_EMAIL,
         "company_name": "SpineAi",
         "current_year": datetime.now().year,
