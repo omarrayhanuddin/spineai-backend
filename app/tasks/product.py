@@ -30,7 +30,6 @@ async def async_db_get_ai_recommendation(session_id):
         ai_recommendations_tags = ai_response.get("product_tags", [])
         session.suggested_product_tags = ai_recommendations_tags
         await session.save()
-        print("AI Recommendations Tags:", ai_recommendations_tags)
     except Exception as e:
         print(f"Error processing AI response: {e}")
     finally:

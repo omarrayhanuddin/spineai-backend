@@ -45,12 +45,9 @@ async def send_daily_treatment_notification_endpoint(
     current_admin: dict = Depends(get_current_admin),
     function_only:bool=False
 ):
-    print("1")
     if function_only:
-        print("2")
         await async_db_operation_for_treatment_notify()
         return {"message": "Daily treatment notification task queued."}
-    print("3")
     send_daily_treatment_notification.delay()
     return {"message": "Daily treatment notification task queued."}
 

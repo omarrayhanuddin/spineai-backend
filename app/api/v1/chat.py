@@ -38,7 +38,6 @@ from app.utils import free_helpers
 
 from app.tasks.product import async_db_get_ai_recommendation
 from app.models.product import Product
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +204,6 @@ async def send_session_v2(
     if not session:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Unauthorized Access")
 
-    umsg_st = time.time()
     # Save user message and embed
     embedded_message = (
         await embed_text(message, openai_client=openai_client) if message else None
@@ -296,9 +294,6 @@ async def send_session_v2(
     if session.is_diagnosed and files is not None:
         session.is_diagnosed = False
         await session.save()
-    print("Entered Is not diagnosed")
-    print("Message Embeddin Time", time.time() - umsg_st)
-    file_st = time.time()
     processed_files = []
     if files:
         if len(files) != len(s3_urls):
@@ -332,21 +327,7 @@ async def send_session_v2(
         processed_files = await FileProcessingService.process_files(
             files=files, s3_urls=s3_urls
         )
-        # file_data = [
-        #     ChatImage(
-        #         message_id=chat_message.id,
-        #         img_base64=file["base64_data"],
-        #         filename=file["filename"],
-        #         file_type=file["file_type"],
-        #         s3_url=file["s3_url"],
-        #         meta_data=file["metadata"],
-        #     )
-        #     for file in processed_files
-        # ]
-        # await ChatImage.bulk_create(file_data)
-    print("Image Proccessing Time", time.time() - file_st)
 
-    build_pmt_st = time.time()
 
     prev_messages = (
         await ChatMessage.filter(session_id=session_id, is_relevant=True)
@@ -376,8 +357,7 @@ async def send_session_v2(
         images_summary=session.image_summary or {},
     )
 
-    print("Build Prompt Time", time.time() - build_pmt_st)
-    openai_st = time.time()
+
     response = await openai_client.chat.completions.create(
         model="gpt-4.1",
         messages=messages,
@@ -390,13 +370,10 @@ async def send_session_v2(
         ai_response = json.loads(result)
     except Exception as e:
         raise HTTPException(500, f"AI response error: {e}")
-    # print("AI Response", ai_response)
-    print("OpenAI Time", time.time() - openai_st)
-    final_response_st = time.time()
+
     backend = ai_response.get("backend", {})
     user_markdown = ai_response.get("user", "")
     if backend.get("is_diagnosed"):
-        print("Entered Diagnosed")
         await ChatMessage.filter(session_id=session_id).update(is_relevant=False)
         await ChatSession.filter(id=session_id).update(
             findings=backend.get("findings"),
@@ -444,7 +421,6 @@ async def send_session_v2(
         data_response["session_title"] = session.title
     if backend.get("prompt_new_session"):
         data_response["new_session_prompt"] = backend.get("prompt_new_session")
-    print("Final Response Time", time.time() - final_response_st)
     return data_response
 
 

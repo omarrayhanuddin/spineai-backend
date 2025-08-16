@@ -86,7 +86,6 @@ async def async_db_operation_for_recommendations_notify():
             recommendations_notified_at__isnull=False,
             user__current_plan__isnull=False,
         ).select_related("user")
-        # print("older_sessions", older_sessions)
         older_sessions_ids = []
         for session in older_sessions:
             send_recommendations_notification_delay.delay(session.id)
