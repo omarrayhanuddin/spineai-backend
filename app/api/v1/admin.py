@@ -9,7 +9,7 @@ from app.tasks.chat import (
     async_db_operation_for_recommendations_notify,
     async_db_operation_for_treatment_plan,
 )
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.tasks.product import async_db_get_ai_recommendation, get_ai_tags_per_session
 
 router = APIRouter(prefix="/v1/admin", tags=["Admin Endpoints"])
@@ -17,18 +17,24 @@ router = APIRouter(prefix="/v1/admin", tags=["Admin Endpoints"])
 
 @router.get("/dashboard", dependencies=[Depends(get_current_admin)])
 async def get_dashboard_data():
+    today = datetime.now().date()
+    start_of_day = datetime.combine(today, datetime.min.time())
+    end_of_day = datetime.combine(today, datetime.max.time())
+
+    start_of_month = today.replace(day=1)
+    start_of_next_month = (start_of_month.replace(day=28) + timedelta(days=4)).replace(day=1)
+
     return {
         "total_users": await User.all().count(),
         "total_free_users": await User.filter(current_plan__isnull=True).count(),
         "total_paid_users": await User.filter(current_plan__isnull=False).count(),
         "total_registered_user_today": await User.filter(
-            created_at__date=datetime.date.today()
+            created_at__gte=start_of_day, created_at__lte=end_of_day
         ).count(),
         "total_registered_user_this_month": await User.filter(
-            created_at__month=datetime.date.today().month
+            created_at__gte=start_of_month, created_at__lt=start_of_next_month
         ).count(),
     }
-
 
 # test send recommendations notification
 @router.post("/send-recommendations-notification")

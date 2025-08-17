@@ -177,7 +177,7 @@ async def update_profile(data: UpdateProfile, user: User = Depends(get_current_u
     response_model=list[UserOut]
 )
 async def get_users(
-    id: Optional[str] = Query(None, description="Filter by user ID"),
+    id: Optional[int] = Query(None, description="Filter by user ID"),
     name: Optional[str] = Query(None, description="Filter by user name"),
     email: Optional[str] = Query(None, description="Filter by email"),
     current_plan: Optional[str] = Query(None, description="Filter by current plan"),
