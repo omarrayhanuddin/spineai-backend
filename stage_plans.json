@@ -19,7 +19,7 @@
       "stripe_price_id": "price_1Rn2mRFjPe0daNEdYLLKBlXu",
       "chat_mode": "basic",
       "message_limit": 100,
-      "image_limit": 10,
+      "image_limit": 20,
       "file_limit": 3,
       "weekly_reminder": false,
       "treatment_plan": false
@@ -31,7 +31,7 @@
       "stripe_price_id": "price_1Rj0RVFjPe0daNEdsVAfoJsL",
       "chat_mode": "pro",
       "message_limit": 250,
-      "image_limit": 30,
+      "image_limit": 40,
       "file_limit": 7,
       "weekly_reminder": true,
       "treatment_plan": false
@@ -43,7 +43,7 @@
       "stripe_price_id": "price_1Rn2npFjPe0daNEdBtVYGnAR",
       "chat_mode": "advanced",
       "message_limit": 1000000,
-      "image_limit": 50,
+      "image_limit": 100,
       "file_limit": 20,
       "weekly_reminder": true,
       "treatment_plan": true
