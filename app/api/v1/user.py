@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from typing import Optional
 from app.schemas.users import (
     UserCreate,
     UserOut,
@@ -170,12 +171,34 @@ async def update_profile(data: UpdateProfile, user: User = Depends(get_current_u
     await user.save()
     return {"message": "Profile updated"}
 
-
 @router.get(
-    "/users", dependencies=[Depends(get_current_admin)], response_model=list[UserOut]
+    "/users",
+    dependencies=[Depends(get_current_admin)],
+    response_model=list[UserOut]
 )
-async def users(offset: int = 0, limit: int = 10):
-    return await User.all().limit(limit).offset(offset)
+async def get_users(
+    id: Optional[str] = Query(None, description="Filter by user ID"),
+    name: Optional[str] = Query(None, description="Filter by user name"),
+    email: Optional[str] = Query(None, description="Filter by email"),
+    current_plan: Optional[str] = Query(None, description="Filter by current plan"),
+    is_admin: Optional[bool] = Query(None, description="Filter by admin status"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(10, ge=1, le=100, description="Pagination limit")
+):
+    # Start with a base queryset
+    query = User.all()
+    if id is not None:
+        query = query.filter(id=id)
+    if name:
+        query = query.filter(full_name__icontains=name)
+    if email:
+        query = query.filter(email__icontains=email)
+    if current_plan:
+        query = query.filter(current_plan__icontains=current_plan)
+    if is_admin is not None:
+        query = query.filter(is_admin=is_admin)
+    query = query.offset(offset).limit(limit).order_by("id")
+    return await query
 
 
 @router.post("/logout")
