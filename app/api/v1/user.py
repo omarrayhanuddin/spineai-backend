@@ -194,7 +194,10 @@ async def get_users(
     if email:
         query = query.filter(email__icontains=email)
     if current_plan:
-        query = query.filter(current_plan__icontains=current_plan)
+        if current_plan.lower() == "free":
+            query = query.filter(current_plan__isnull=True)
+        else:
+            query = query.filter(current_plan__icontains=current_plan)
     if is_admin is not None:
         query = query.filter(is_admin=is_admin)
     query = query.offset(offset).limit(limit).order_by("id")
