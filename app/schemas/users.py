@@ -27,6 +27,7 @@ UserOut = pydantic_model_creator(
         "affiliate_id",
         "refferred_by",
         "referrer_bonus_applied",
+        "referral_balance"
     ],
     # exclude=["chat_sessions"]
 )

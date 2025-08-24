@@ -441,21 +441,12 @@ async def handle_ebook_purchase(
         attachments=[pdf_path] if os.path.exists(pdf_path) else None,
     )
     user = await User.get_or_none(email=user_email)
-    if user:
-        await PurchasedItem.create(
-            user=user,
-            email=user.email,
-            item_type="ebook",
-            quantity=1,
-        )
-    else:
-        await PurchasedItem.create(
-            user=None,
-            email=user_email,
-            item_type="ebook",
-            quantity=1,
-        )
-
+    await PurchasedItem.create(
+        user=user,
+        email=user_email,
+        item_type="ebook",
+        quantity=1,
+    )
 
     await PendingEvent.create(
         id=event_id,
