@@ -8,6 +8,7 @@ class UserCreate(BaseModel):
     full_name: str
     password: str
     agreed_to_toc: bool
+    refferred_by: str = None
 
 
 UserOut = pydantic_model_creator(
@@ -23,6 +24,9 @@ UserOut = pydantic_model_creator(
         "next_billing_date",
         "allow_email_notifications",
         "allow_push_notifications",
+        "affiliate_id",
+        "refferred_by",
+        "referrer_bonus_applied",
     ],
     # exclude=["chat_sessions"]
 )

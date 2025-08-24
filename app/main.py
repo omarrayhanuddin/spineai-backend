@@ -1,4 +1,5 @@
 import warnings
+
 warnings.filterwarnings("ignore", category=UserWarning, module="ctranslate2")
 
 from tortoise import Tortoise
@@ -13,7 +14,11 @@ from app.api.v1 import (
     treatment_plan,
     communication,
     admin,
-    product,mail,notifications,stripe_prices
+    product,
+    mail,
+    notifications,
+    stripe_prices,
+    payout,
 )
 from contextlib import asynccontextmanager
 from httpx import AsyncClient as HttpxAsyncClient
@@ -27,7 +32,6 @@ import json
 import logging
 import subprocess
 import sys
-
 
 
 logging.basicConfig(
@@ -190,4 +194,5 @@ app.include_router(product.router)
 app.include_router(mail.router)
 app.include_router(notifications.router)
 app.include_router(stripe_prices.router)
+app.include_router(payout.router)
 logger.info("API routers included: user, chat, payment, feedback, stripe_prices.")

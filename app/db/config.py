@@ -14,6 +14,7 @@ TORTOISE_ORM = {
                 "app.models.treatment_plan",
                 "app.models.communication",
                 "app.models.product",
+                "app.models.payout",
                 "aerich.models",
             ],
             "default_connection": "default",

@@ -32,6 +32,8 @@ router = APIRouter(prefix="/v1/auth", tags=["User Endpoints"])
 async def register(user: UserCreate, background_tasks: BackgroundTasks):
     if await User.filter(email=user.email).exists():
         raise HTTPException(400, "Email already registered")
+    if user.refferred_by and not await User.filter(affiliate_id=user.refferred_by).exists():
+        raise HTTPException(400, "Invalid affiliate ID")
     user = await User.create(**user.model_dump(exclude_unset=True))
     context = {
         "user_name": user.full_name,

@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends
 from app.api.dependency import get_current_admin
 from app.models.user import User
+from app.models.payment import PurchasedItem
+from app.schemas.payment import PurchasedItemOut
 from app.tasks.chat import (
     send_recommendations_notification,
     create_treatment_plan_from_ai_response,
@@ -22,7 +24,9 @@ async def get_dashboard_data():
     end_of_day = datetime.combine(today, datetime.max.time())
 
     start_of_month = today.replace(day=1)
-    start_of_next_month = (start_of_month.replace(day=28) + timedelta(days=4)).replace(day=1)
+    start_of_next_month = (start_of_month.replace(day=28) + timedelta(days=4)).replace(
+        day=1
+    )
 
     return {
         "total_users": await User.all().count(),
@@ -35,6 +39,7 @@ async def get_dashboard_data():
             created_at__gte=start_of_month, created_at__lt=start_of_next_month
         ).count(),
     }
+
 
 # test send recommendations notification
 @router.post("/send-recommendations-notification")
@@ -87,3 +92,25 @@ async def send_create_product_tags_endpoint(
 
     get_ai_tags_per_session.delay(session_id)
     return {"message": "AI product tags creation task queued."}
+
+
+@router.get(
+    "/purchased-items",
+    dependencies=[Depends(get_current_admin)],
+    response_model=list[PurchasedItemOut],
+)
+async def get_purchased_items(
+    limit: int = 100,
+    offset: int = 0,
+    item_type: str = None,
+    email: str = None,
+    user_id: int = None,
+):
+    query = PurchasedItem.all().limit(limit).offset(offset)
+    if email:
+        query = query.filter(email=email)
+    if user_id:
+        query = query.filter(user_id=user_id)
+    if item_type:
+        query = query.filter(item_type=item_type)
+    return await PurchasedItemOut.from_queryset(query)

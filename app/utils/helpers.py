@@ -5,6 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from app.core.config import settings
 import secrets
 import random
+import string
 from typing import List, Dict, Optional
 
 
@@ -29,6 +30,34 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
         to_encode, settings.JWT_SECRET_KEY, algorithm=settings.ALGORITHM
     )
     return encoded_jwt
+
+
+async def generate_affiliate_id(length=8):
+    from app.models.user import User
+    """
+    Generate a unique affiliate ID of specified length.
+    Ensures absolute uniqueness by checking against existing IDs in the database.
+
+    Args:
+        length (int): Length of the affiliate ID (default: 8).
+
+    Returns:
+        str: A unique affiliate ID.
+    """
+    characters = string.ascii_letters + string.digits  # Alphanumeric characters
+    max_attempts = 10
+
+    for _ in range(max_attempts):
+        # Generate a random string using secrets
+        affiliate_id = "".join(secrets.choice(characters) for _ in range(length))
+
+        # Check if the ID already exists in the database
+        if not await User.filter(affiliate_id=affiliate_id).exists():
+            return affiliate_id
+
+    raise ValueError(
+        f"Could not generate a unique affiliate ID after {max_attempts} attempts. Consider increasing length or checking database."
+    )
 
 
 def generate_token(length=32):
@@ -521,8 +550,8 @@ def build_post_diagnosis_prompt(
                 "When generating the report, fill in the template with specific findings relevant to the patient's condition, ensuring accuracy and consistency with prior diagnoses. Include the report_title key only when a report is requested, specifying the spine region addressed (e.g., 'Cervical Spine X-Ray Report').\n"
                 " - Make sure to never give users any external links to other websites if they ask you about exercises or treatment plans or products.\n"
                 " - Just suggest products and recommendations as it is but never ever give any external websites link.\n"
-                " - Instead if they insist you'll give them this link \"https://stage.online-spine.com/dashboard/treatments\" for treatment plans and exercises.\n"
-                " - And this link \"https://stage.online-spine.com/dashboard/products\" for products recommendations.\n"
+                ' - Instead if they insist you\'ll give them this link "https://stage.online-spine.com/dashboard/treatments" for treatment plans and exercises.\n'
+                ' - And this link "https://stage.online-spine.com/dashboard/products" for products recommendations.\n'
                 " - If they insist on giving suggestions about something that you have to give the user an external website link in that case you'll say sorry it's not in my capability you should consult a doctor for further information."
             ),
         }

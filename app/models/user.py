@@ -3,10 +3,15 @@ from tortoise import fields
 from app.models.base import BaseModelWithoutID
 from app.models.payment import Plan
 from app.models.chat import Usage
-from app.utils.helpers import get_password_hash, generate_token, generate_secret_key, get_month_range
+from app.utils.helpers import (
+    get_password_hash,
+    generate_token,
+    generate_secret_key,
+    get_month_range,
+    generate_affiliate_id
+)
 import asyncio
 import logging
-from datetime import datetime, timezone
 from app.core.config import settings
 
 
@@ -20,6 +25,7 @@ class User(BaseModelWithoutID):
     verification_token = fields.CharField(max_length=255, null=True)
     reset_token = fields.CharField(max_length=255, null=True)
     stripe_customer_id = fields.CharField(max_length=200, null=True)
+    stripe_connect_id = fields.CharField(max_length=200, null=True)
     subscription_status = fields.CharField(max_length=50, null=True, default="active")
     subscription_id = fields.CharField(max_length=100, null=True)
     current_plan = fields.CharField(max_length=100, null=True)
@@ -32,6 +38,11 @@ class User(BaseModelWithoutID):
     )
     allow_email_notifications = fields.BooleanField(default=True)
     allow_push_notifications = fields.BooleanField(default=True)
+    affiliate_id = fields.CharField(max_length=30, null=True, default=generate_affiliate_id)
+    refferred_by = fields.CharField(max_length=30, null=True)
+    referrer_bonus_applied = fields.BooleanField(default=False)
+    referral_balance = fields.DecimalField(max_digits=10, decimal_places=2)
+    has_bought_ebook = fields.BooleanField(default=False)
 
     class Meta:
         table = "users"
@@ -68,9 +79,23 @@ class User(BaseModelWithoutID):
 
         try:
             total_message, total_images, total_files = await asyncio.gather(
-                Usage.filter(created_at__gte=start_current_month, created_at__lt=start_next_month,user=self, usage_type="message").count(),
-                Usage.filter(created_at__gte=start_current_month, created_at__lt=start_next_month,user=self, usage_type__in=["jpg", "jpeg", "png"]).count(),
-                Usage.filter(created_at__gte=start_current_month, created_at__lt=start_next_month,user=self)
+                Usage.filter(
+                    created_at__gte=start_current_month,
+                    created_at__lt=start_next_month,
+                    user=self,
+                    usage_type="message",
+                ).count(),
+                Usage.filter(
+                    created_at__gte=start_current_month,
+                    created_at__lt=start_next_month,
+                    user=self,
+                    usage_type__in=["jpg", "jpeg", "png"],
+                ).count(),
+                Usage.filter(
+                    created_at__gte=start_current_month,
+                    created_at__lt=start_next_month,
+                    user=self,
+                )
                 .exclude(usage_type__in=["jpg", "jpeg", "png"])
                 .count(),
             )

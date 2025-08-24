@@ -14,6 +14,7 @@ class Plan(BaseModelWithoutID):
     file_limit = fields.IntField(default=1)
     weekly_reminder = fields.BooleanField(default=False)
     treatment_plan = fields.BooleanField(default=False)
+    comission_percentage = fields.IntField(default=0)
 
     class Meta:
         table = "plans"
@@ -31,3 +32,20 @@ class PendingEvent(BaseModelWithoutID):
 
     class Meta:
         table = "pending_stripe_events"
+
+
+class PurchasedItem(BaseModelWithoutID):
+    id = fields.IntField(pk=True)
+    user = fields.ForeignKeyField(
+        "models.User",
+        related_name="purchased_items",
+        on_delete=fields.SET_NULL,
+        null=True,
+    )
+    email = fields.CharField(max_length=255, null=True)
+    item_type = fields.CharField(max_length=50)
+    quantity = fields.IntField(default=1)
+    purchase_date = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "purchased_items"
