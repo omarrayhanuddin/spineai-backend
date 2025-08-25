@@ -19,6 +19,7 @@ from app.api.v1 import (
     notifications,
     stripe_prices,
     payout,
+    affiliate
 )
 from contextlib import asynccontextmanager
 from httpx import AsyncClient as HttpxAsyncClient
@@ -195,4 +196,5 @@ app.include_router(mail.router)
 app.include_router(notifications.router)
 app.include_router(stripe_prices.router)
 app.include_router(payout.router)
+app.include_router(affiliate.router)
 logger.info("API routers included: user, chat, payment, feedback, stripe_prices.")
