@@ -41,7 +41,7 @@ class User(BaseModelWithoutID):
     affiliate_id = fields.CharField(max_length=30, null=True, default=generate_affiliate_id)
     refferred_by = fields.CharField(max_length=30, null=True)
     referrer_bonus_applied = fields.BooleanField(default=False)
-    referral_balance = fields.DecimalField(max_digits=10, decimal_places=2)
+    referral_balance = fields.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     has_bought_ebook = fields.BooleanField(default=False)
 
     class Meta:
